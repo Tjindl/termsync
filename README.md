@@ -1,9 +1,17 @@
-# UBC Service Planner
+# Termsync
 
-Hackathon planning demo for testing changes to scheduled service on UBC routes **99, R4, and 49**.
+A small UBC Exchange service-planning demo for routes **99, R4, and 49**.
 
-- [App and analysis specification](TECH_SPEC.md)
-- [Data package, row counts, source links, and join rules](data/README.md)
-- [Rebuild scripts](scripts/build_data.py)
+Run it locally from this folder:
 
-The `data/` CSVs are ready to import into Databricks as separate tables so their distinct grains remain visible. The public package contains a coarse weekly synthetic activity summary, historical TransLink crowding, selected 2026 published schedule dates, UBC transportation report context, and academic dates. The supplied ZIP and rebuild scripts can generate the optional half-hour activity table locally. The schedule and synthetic periods **do not overlap**; a combined result must be labelled a cross-year planning scenario. Nothing here measures individual bus loads or stop queues.
+```sh
+python3 -m http.server 5173
+```
+
+Then open [http://localhost:5173](http://localhost:5173). Pick a route, inspect the busiest historical time blocks, click a scheduled departure, and compare nearby lower-load trip reassignment candidates. The app is static and needs no build step.
+
+- [How the app works and what its numbers mean](app/README.md)
+- [Curated data and source links](data/README.md)
+- [Full technical specification](TECH_SPEC.md)
+
+The displayed crowding is a **2025 route-level historical average**, while the scheduled departure times come from a **2026 GTFS sample date**. The app cannot tell whether a particular bus is full or free to redirect. A candidate is a planning scenario that also removes a trip from its donor route.

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f3ef" />
+    <title>Termsync — UBC Bus Planner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="app/styles.css" />
+    <script src="app/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="masthead">
+        <a class="brand" href="./" aria-label="Termsync home"><span class="brand-mark">t<span>.</span></span><span>termsync</span></a>
+        <span class="masthead-meta">UBC EXCHANGE <span class="meta-divider">/</span> SERVICE PLANNER</span>
+      </header>
+
+      <main>
+        <section class="intro" aria-labelledby="page-title">
+          <div>
+            <p class="eyebrow">A simpler way to test a bus change</p>
+            <h1 id="page-title">Where should the next <em>bus</em> go?</h1>
+            <p class="intro-copy">Pick a route, inspect its busy hours, then see whether a lower-load trip from a nearby bay could fill a schedule gap.</p>
+          </div>
+          <div class="snapshot-card" aria-label="Data periods">
+            <div class="snapshot-line"><span class="snapshot-dot history"></span><span>LOADS</span><strong>Fall 2025 weekdays</strong></div>
+            <div class="snapshot-line"><span class="snapshot-dot schedule"></span><span>TIMES</span><strong>Mon 28 Sep 2026</strong></div>
+            <p>Planning comparison across two years</p>
+          </div>
+        </section>
+
+        <nav class="route-nav" id="route-nav" aria-label="Choose a bus route"></nav>
+
+        <div id="app-error" class="app-error" role="alert" hidden></div>
+        <div id="app-content" hidden>
+          <div class="work-grid">
+            <section class="panel pressure-panel" aria-labelledby="pressure-title">
+              <div class="section-topline"><span class="step">01</span><span>CHOOSE A TIME BLOCK</span></div>
+              <div class="section-heading">
+                <div><h2 id="pressure-title">When is it busiest?</h2><p>Ranked by average highest on-board count</p></div>
+                <span class="source-tag">2025 HISTORY</span>
+              </div>
+              <div class="period-list" id="period-list"></div>
+              <p class="small-note">Each bar is the average busiest point along the full route. It is not a count at UBC Exchange.</p>
+            </section>
+
+            <section class="panel schedule-panel" aria-labelledby="schedule-title">
+              <div class="section-topline"><span class="step">02</span><span>CHOOSE A SCHEDULE GAP</span></div>
+              <div class="section-heading">
+                <div><h2 id="schedule-title">Which bus time?</h2><p id="schedule-subtitle"></p></div>
+                <span class="source-tag schedule-tag">2026 SCHEDULE</span>
+              </div>
+              <div id="pressure-callout" class="pressure-callout"></div>
+              <div id="hour-tabs" class="hour-tabs" role="tablist" aria-label="Choose an hour"></div>
+              <div id="departure-list" class="departure-list" aria-label="Scheduled departures"></div>
+              <div id="gap-summary" class="gap-summary"></div>
+            </section>
+          </div>
+
+          <section class="panel candidates-panel" aria-labelledby="candidates-title">
+            <div class="candidates-heading">
+              <div>
+                <div class="section-topline"><span class="step">03</span><span>TEST A NEARBY TRIP</span></div>
+                <h2 id="candidates-title">Could a nearby bus fill that gap?</h2>
+                <p>Same terminal · within 250 m · scheduled inside the selected gap · historically below 60% load</p>
+              </div>
+              <span class="candidate-count" id="candidate-count"></span>
+            </div>
+            <div id="candidates-content"></div>
+          </section>
+        </div>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-main"><strong>Decision aid, not dispatch advice.</strong> The load signal is a 2025 route-and-time-block average, shared by every bus time shown. A specific bus may be full or empty. Reassigning a trip needs vehicle, driver, route, and passenger checks.</div>
+        <div class="footer-sources"><a href="https://www.translink.ca/tspr" target="_blank" rel="noopener noreferrer">2025 TransLink TSPR ↗</a><a href="https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-data" target="_blank" rel="noopener noreferrer">TransLink GTFS ↗</a></div>
+        <small>Route and arrival data used in this product or service is provided by permission of TransLink. TransLink assumes no responsibility for the accuracy or currency of the Data used in this product or service.</small>
+      </footer>
+    </div>
+  </body>
+</html>
