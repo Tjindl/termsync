@@ -1,0 +1,44 @@
+# UBC service planner data
+
+This directory is the compact input package for [`TECH_SPEC.md`](../TECH_SPEC.md). It was prepared on 2026-09-26 for a **planning demo**, not an operational dispatch system. All CSVs are UTF-8 with a header row; empty numeric cells mean the source did not report a value.
+
+| File | Rows | Grain | Role |
+| --- | ---: | --- | --- |
+| `ubc_activity_weekly.csv` | 45 | Vancouver Monday–Sunday week | Week-level synthetic activity flag; 43 weeks are complete. |
+| `translink_route_load_history_2025.csv` | 234 | Route × season × day type × TransLink time block × direction | Historical mean peak on-board passenger load and load factor for 99/R4/49; joined with route-level service intensity on matching keys. |
+| `translink_route_annual_2025.csv` | 3 | Route × year | Whole-route annual boardings, crowding, and punctuality context. |
+| `translink_ubc_exchange_schedule_fall_2026.csv` | 2,395 | One GTFS trip event at UBC Exchange on one sample service date | Published arrivals into and departures from UBC Exchange for 99/R4/49. |
+| `ubc_route_trips_2025.csv` | 3 | Route × fall 2025 weekday snapshot | Campus screenline trips to **and** from UBC by route, all day. |
+| `ubc_peak_hours_2025.csv` | 4 | Selected hour × direction, all routes | Campus screenline transit trips in two reported peak hours. |
+| `ubc_campus_summary_2023_2025.csv` | 3 | Fall weekday snapshot × year | Campus-wide person trips, transit share, and daytime population context. |
+| `ubc_travel_context.csv` | 19 | Year × metric × route/direction/period | Normalized view of the three UBC report extracts above, ready for the app's `ubc_travel_context` table. |
+| `ubc_academic_dates.csv` | 13 | Academic period | Most-faculty teaching, exam, and midterm-break labels. |
+
+## What the numbers mean
+
+- `record_count` in the weekly table counts **synthetic activity records**, not people, unique devices, riders, bus stop arrivals, or bus queues. The raw supplied UBC file has 8,000,260 records spanning 2025-11-01 00:00 UTC through 2026-08-31 23:30 UTC. Conversion creates partial Vancouver local days on 2025-10-31 and 2026-08-31; the two partial weeks are marked. This public package contains only the coarse weekly aggregate. The build scripts can make the 30-minute table locally from the supplied ZIP for analysis in Databricks.
+- To calculate the weekly baseline, the local build first assigns each raw record to a UTC half-hour, then compares each bin with the median of **other** weeks' counts for its Vancouver weekday and half-hour slot. The weekly `activity_ratio` compares sums of records and those baselines for the bins available in that week. Exclude `partial_week` from comparisons. The hourly alignment of the synthetic source has **not** been validated: its local profile peaks around 5 a.m. while UBC's measured travel peaks occur later. Use the synthetic series to flag **weeks for inspection only** until its timestamp convention is checked.
+- `average_peak_passenger_load` is a **TransLink historical route measure**: the average maximum on-board load reached somewhere on trips in that route/direction/time block. `average_peak_load_factor_percent` uses percent units (e.g. `84`, not `0.84`). It does not identify a bus at UBC Exchange or a specific half-hour. Four block/direction load values are absent in TransLink's source and remain blank. `average_trips_per_clock_hour_per_direction` is a route-level average for the same season/day type/block, not a direction-specific observed count. TransLink's definition excludes clock hours without service from that average, which especially matters overnight.
+- `percent_trips_with_overcrowding` in the annual table applies to the **whole route and year**. It must not be joined to each time block as if observed there. The annual boarding counts also cover the whole route, beyond the campus screenline.
+- `average_weekday_transit_trips_to_from_ubc` in the UBC route table counts **bidirectional campus screenline trips over the entire day**. It is neither a daily rider count nor UBC Exchange boardings. `ubc_peak_hours_2025.csv` covers **all transit routes together**; it cannot be allocated to 99/R4/49 without an explicit assumption. The UBC reports are survey snapshots, not a daily history.
+- The timetable is **scheduled**, not actual bus arrival or performance data. It contains one representative Monday (2026-09-28), Saturday (2026-10-03), and Sunday (2026-10-04) from GTFS feed `26SEP_20260925` (feed validity 2026-09-07 through 2027-01-03). `direction=toward_ubc` represents an arrival at the Exchange unloading stop; `away_from_ubc` represents a departure from a boarding bay. Times retain Vancouver offsets and UTC versions, including any GTFS times after 24:00. Download a fresh feed to plan another date.
+- Academic labels overlap: a midterm break sits inside a term's class interval. They describe the calendar, not attendance. “Most faculties” has exceptions.
+
+## How the tables connect
+
+1. Join `ubc_activity_weekly` to `ubc_academic_dates` by **date overlap** to label simulated weeks. A label is context, not a cause of an activity change.
+2. For a route/day type/time block, use `translink_route_load_history_2025` to see historical crowding. The time-block codes are starts of these intervals: `4` = 04:00–06:00, `6` = 06:00–09:00, `9` = 09:00–15:00, `15` = 15:00–18:00, `18` = 18:00–21:00, `21` = 21:00–24:00, and `24` = 24:00–04:00. `MF` means Monday–Friday; `Sun/Hol` includes Sundays and holidays.
+3. Filter the GTFS table to a **sample service date, route, direction, and event type** to calculate scheduled gaps. Match historical crowding to a timetable by route/direction/day type/time block for a *cross-year scenario*, not a same-day observational join. The synthetic interval ends before this GTFS sample starts. There is no observed 2025/26 synthetic-to-bus-load pairing here.
+4. Use `ubc_travel_context.csv` in the app, or inspect its three source extracts (`ubc_route_trips_2025.csv`, `ubc_peak_hours_2025.csv`, `ubc_campus_summary_2023_2025.csv`). Do not multiply synthetic records by a passenger conversion factor or claim exact load after adding a bus.
+
+## Sources and reproducibility
+
+- **Supplied hackathon source:** `synthetic_data_ubc.csv` inside the provided `OneDrive_1_2026-09-25.zip`. We publish only the 45-row weekly aggregate, not the 479 MB raw CSV or the half-hour history. Run `scripts/aggregate_raw_ubc.py --zip YOUR_ZIP --out ubc_bins.csv` to reproduce the first aggregation; `scripts/build_data.py` then creates the weekly file and optional local quarterly 30-minute CSVs.
+- **Historical transit:** TransLink's [2025 Transit Service Performance Review](https://www.translink.ca/tspr), using its [seasonal peak-load CSV](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_peakload_yearlinedaytypeseasontimerangedirection.csv), [seasonal service CSV](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_yearlinedaytypeseasontimerange.csv), and [annual route CSV](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_yearline.csv). The [TransLink metric definitions](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/tspr_2019_bus_seabus_handydart_definitions.pdf) define the time blocks and load terms.
+- **Timetable:** TransLink [GTFS static feed](https://gtfs-static.translink.ca/gtfs/google_transit.zip), version `26SEP_20260925`, retrieved 2026-09-26. The [GTFS developer page](https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-data) explains that the feed is updated regularly and sets the attribution requirement.
+- **UBC travel:** [2025 Transportation Status Report](https://planning.ubc.ca/sites/default/files/2026-06/UBC2025-TransportationStatusReport-FINAL.pdf), especially Tables 2.3 and 3.3. Year-by-year values retain the report's own published estimates.
+- **Academic dates:** [UBC 2025/26 calendar](https://vancouver.calendar.ubc.ca/academic-year-202526/all-months) and [UBC 2026/27 dates](https://vancouver.calendar.ubc.ca/dates-and-deadlines).
+
+The build script is [`scripts/build_data.py`](../scripts/build_data.py). It takes the local aggregate CSV, three TSPR CSVs, three UBC report extracts, and the GTFS ZIP as explicit file arguments; run `python3 scripts/build_data.py --help` for the argument names. It requires only the Python standard library.
+
+**Required TransLink GTFS attribution:** “Route and arrival data used in this product or service is provided by permission of TransLink. TransLink assumes no responsibility for the accuracy or currency of the Data used in this product or service.”

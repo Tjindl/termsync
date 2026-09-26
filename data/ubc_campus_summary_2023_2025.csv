@@ -1,0 +1,4 @@
+year,season,total_avg_weekday_person_trips,avg_weekday_transit_trips,transit_mode_share_percent,avg_daytime_population_fte,source_url
+2023,Fall,144600,77100,53,64200,https://planning.ubc.ca/sites/default/files/2026-06/UBC2025-TransportationStatusReport-FINAL.pdf
+2024,Fall,152400,79000,52,64300,https://planning.ubc.ca/sites/default/files/2026-06/UBC2025-TransportationStatusReport-FINAL.pdf
+2025,Fall,151900,81400,53.6,65400,https://planning.ubc.ca/sites/default/files/2026-06/UBC2025-TransportationStatusReport-FINAL.pdf

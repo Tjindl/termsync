@@ -1,0 +1,5 @@
+year,season,local_period,direction,average_weekday_transit_trips,source_url,source_note
+2025,Fall,09:00-10:00,westbound_toward_ubc,5094,https://planning.ubc.ca/sites/default/files/2026-06/UBC2025-TransportationStatusReport-FINAL.pdf,Table 2.3 all transit routes
+2025,Fall,09:00-10:00,eastbound_away_from_ubc,1500,https://planning.ubc.ca/sites/default/files/2026-06/UBC2025-TransportationStatusReport-FINAL.pdf,Table 2.3 all transit routes
+2025,Fall,17:00-18:00,westbound_toward_ubc,2875,https://planning.ubc.ca/sites/default/files/2026-06/UBC2025-TransportationStatusReport-FINAL.pdf,Table 2.3 all transit routes
+2025,Fall,17:00-18:00,eastbound_away_from_ubc,5655,https://planning.ubc.ca/sites/default/files/2026-06/UBC2025-TransportationStatusReport-FINAL.pdf,Table 2.3 all transit routes

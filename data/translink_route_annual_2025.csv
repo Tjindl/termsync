@@ -1,0 +1,4 @@
+year,route,annual_boardings_whole_route,average_daily_boardings_weekday_whole_route,average_peak_load_factor_percent,percent_trips_with_overcrowding,on_time_performance_percent,source_url
+2025,49,8582083.826,27316.06577,68.60806258,14.33271499,76.99666503,https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_yearline.csv
+2025,99,10654582.78,34653.31404,69.37691241,20.25074479,81.86137226,https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_yearline.csv
+2025,R4,8592112.271,27483.35847,67.35395644,15.22832311,85.08718568,https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_yearline.csv
