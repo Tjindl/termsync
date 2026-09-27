@@ -73,27 +73,16 @@
             </section>
           </div>
 
-          <section class="panel candidates-panel" id="gap-options" aria-labelledby="candidates-title">
-            <div class="candidates-heading">
-              <div>
-                <div class="section-topline"><span class="step">3</span><span id="candidates-step">Fill the gap</span></div>
-                <h2 id="candidates-title">How should we handle this gap?</h2>
-                <p id="candidates-description">Compare redirecting a bus, adding a trip, or leaving it, using simulated student demand. The line counts below start from the same simulation; replace them with counts you observe.</p>
-              </div>
-              <span class="candidate-count" id="candidate-count"></span>
-            </div>
-            <div id="candidates-content"></div>
-          </section>
-
           <section class="panel map-panel" id="map-panel" aria-labelledby="map-title" hidden>
             <div class="candidates-heading">
               <div>
-                <div class="section-topline"><span class="step">4</span><span id="map-step">See the reroute</span></div>
-                <h2 id="map-title">Where would the borrowed bus go?</h2>
+                <div class="section-topline"><span class="step">3</span><span id="map-step">Pick a bus</span></div>
+                <h2 id="map-title">Which bus could fill the gap?</h2>
                 <p id="map-subtitle"></p>
               </div>
-              <span class="source-tag">2026 GTFS route shapes</span>
+              <span class="candidate-count" id="candidate-count"></span>
             </div>
+            <div id="bus-pick" class="bus-pick"></div>
             <div class="map-body">
               <div id="route-map" class="route-map"></div>
               <aside id="reroute" class="reroute" aria-live="polite"></aside>
@@ -104,7 +93,21 @@
               <span class="donor-only"><i class="key-dot"></i>Borrowed bus on the covered trip</span>
               <span><i class="key-line is-rail"></i>SkyTrain</span>
               <span><i class="key-line is-network"></i>Other bus routes</span>
+              <span class="legend-source">Route shapes: 2026 GTFS</span>
             </div>
+            <div id="bus-test"></div>
+          </section>
+
+          <section class="panel candidates-panel" id="gap-options" aria-labelledby="candidates-title">
+            <div class="candidates-heading">
+              <div>
+                <div class="section-topline"><span class="step">4</span><span id="candidates-step">Decide</span></div>
+                <h2 id="candidates-title">How should we handle this gap?</h2>
+                <p id="candidates-description">Compare redirecting the best bus from step 3, adding a trip, or leaving it alone, using simulated student demand.</p>
+              </div>
+              <span class="source-tag">simulated student demand</span>
+            </div>
+            <div id="candidates-content"></div>
           </section>
         </div>
       </main>

@@ -673,11 +673,11 @@ function applyQueueExample(which) {
 function renderCandidates() {
   const gap = selectedGap();
   const special = route().serviceType !== "regular";
-  $("candidates-step").textContent = special ? "Route context" : "Fill the gap";
+  $("candidates-step").textContent = special ? "Route context" : "Decide";
   $("candidates-title").textContent = special ? "How can we use this route?" : "How should we handle this gap?";
   $("candidates-description").textContent = special
     ? "Its published timetable and path are available. This app compares city-bus queue scenarios separately."
-    : "Compare redirecting a bus, adding a trip, or leaving it, using simulated student demand. The line counts below start from the same simulation; replace them with counts you observe.";
+    : "Compare redirecting the best bus from step 3, adding a trip, or leaving it alone, using simulated student demand.";
   if (special) {
     state.candidateId = null;
     state.swap = null;
@@ -687,18 +687,26 @@ function renderCandidates() {
       ? "Route 68 connects UBC Exchange with Wesbrook Village. Its historical load and timetable are shown, but this campus shuttle is excluded from swaps with city routes."
       : "N17 has scheduled trips and a mapped path, but no comparable 2025 route-load series in this app. A crowding or bus-swap claim would be unsupported.";
     $("candidates-content").innerHTML = `<div class="no-candidates"><div><strong>${title}</strong><p>${explanation}</p></div></div>`;
+    $("bus-pick").innerHTML = "";
+    $("bus-test").innerHTML = "";
     renderAnswer(null);
     renderMap();
+    syncUrl();
     return;
   }
   const examples = `<div class="queue-examples"><span>Examples from the simulation</span>
     ${Object.entries(QUEUE_EXAMPLES).map(([key, example]) => `<button type="button" data-queue-example="${key}">${escapeHtml(example.label)}</button>`).join("")}
-    <small>Line counts come from a Monte Carlo student simulation and can be changed below. No live queue feed is connected.</small></div>`;
+    <small>Line counts come from a Monte Carlo student simulation and can be changed below the map. No live queue feed is connected.</small></div>`;
   const candidates = queueCandidatesForGap(gap);
   const options = compareOptions(gap, candidates);
-  const comparison = compareMarkup(options);
   renderAnswer(options);
-  $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "bus to redirect" : "buses to redirect"}`;
+  $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "bus" : "buses"} could fill it`;
+  // Step 4: the three ways to handle the gap, or why they can't be compared.
+  const noComparison = !gap ? "Choose a departure in step 2 to compare the options for the gap after it."
+    : gap.next.minute - gap.first.minute > MAX_FILLABLE_GAP ? "This is a scheduled service break, not a gap to fill."
+      : "There is no simulated demand for this time, so the options can't be compared.";
+  $("candidates-content").innerHTML = compareMarkup(options) || `<div class="no-candidates"><div><strong>Nothing to compare</strong><p>${noComparison}</p></div></div>`;
+  // Step 3: the buses that could be redirected, above the map; the line-count check below it.
   if (!candidates.length) {
     state.candidateId = null;
     state.swap = null;
@@ -706,7 +714,8 @@ function renderCandidates() {
       : !state.map || !state.duties ? "The route map or vehicle blocks are unavailable."
         : gap.next.minute - gap.first.minute > MAX_FILLABLE_GAP ? "This is a scheduled service break, so the app does not propose borrowing a bus for it."
           : "No nearby route follows a suitable path and fits the bus's published next duty for this gap.";
-    $("candidates-content").innerHTML = `${comparison}${examples}<div class="no-candidates"><div><strong>No screened bus to redirect</strong><p>${message}</p></div></div>`;
+    $("bus-pick").innerHTML = `${examples}<div class="no-candidates"><div><strong>No screened bus to redirect</strong><p>${message}</p></div></div>`;
+    $("bus-test").innerHTML = "";
   } else {
     if (!candidates.some((candidate) => candidate.id === state.candidateId)) {
       state.candidateId = candidates[0].id;
@@ -726,13 +735,14 @@ function renderCandidates() {
       : "No later passenger trip appears in this GTFS vehicle block. Driver and depot duties are still unknown.";
     const cautionNote = selected.cautions.length
       ? `<ul class="queue-cautions">${selected.cautions.map((text) => `<li>${escapeHtml(text)}</li>`).join("")}</ul>` : "";
-    $("candidates-content").innerHTML = `${comparison}${examples}<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
+    $("bus-pick").innerHTML = `${examples}<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
       <span class="candidate-top"><span class="candidate-route" style="--route-color:${routeColor(candidate.donorId)}">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">Move the ${escapeHtml(candidate.donorId)} at ${timeLabel(candidate.trip.minute)}</span><span class="candidate-time">${escapeHtml(candidate.trip.bay)} → ${escapeHtml(gap.first.bay)} · ${candidate.distance} m</span></span></span>
       <span class="candidate-divider"></span><span class="candidate-facts"><span>${candidate.cautions.length ? `${candidate.cautions.length} ${candidate.cautions.length === 1 ? "caution" : "cautions"}` : "Clean fit"}</span><span>${candidate.reroute.offKm.toFixed(1)} km off path</span></span>
       ${candidate.simulatedGain === null ? "" : `<span class="candidate-sim ${candidate.simulatedGain < 0 ? "is-negative" : ""}">Simulated: ${candidate.simulatedGain === 0 ? "no wait change"
         : `${candidate.simulatedGain < 0 ? "adds" : "saves"} ${Math.abs(candidate.simulatedGain).toLocaleString()} passenger-min`}</span>`}
-    </button>`).join("")}</div>
-    <div class="queue-workspace">
+    </button>`).join("")}</div>`;
+    $("bus-test").innerHTML = `<div class="queue-workspace">
+      <h3 class="queue-title">Check the move with people waiting</h3>
       <div class="queue-tradeoff"><div><span class="metric-label">Longest wait for the ${escapeHtml(state.route)}</span><strong>${selected.targetBefore} → ${selected.targetAfter} min</strong></div><div><span class="metric-label">Longest wait for the ${escapeHtml(selected.donorId)}</span><strong>${selected.donorBefore} → ${selected.donorAfter} min</strong></div></div>
       <div class="queue-inputs">
         <label>Waiting for ${escapeHtml(state.route)} · ${escapeHtml(gap.first.bay)}<input id="target-queue" type="number" min="0" max="1000" step="1" inputmode="numeric" value="${state.targetQueue ?? ""}" placeholder="Count people" /></label>
@@ -742,7 +752,7 @@ function renderCandidates() {
       <div class="queue-result" id="queue-result" aria-live="polite">${queueResultMarkup(gap, selected)}</div>
       <p class="queue-duty">${dutyNote} This is a timetable screen, not a dispatch authorization.</p>${cautionNote}
     </div>`;
-    $("candidates-content").querySelectorAll("[data-candidate]").forEach((button) => button.addEventListener("click", () => {
+    $("bus-pick").querySelectorAll("[data-candidate]").forEach((button) => button.addEventListener("click", () => {
       if (state.candidateId !== button.dataset.candidate) state.donorQueue = null;
       state.candidateId = button.dataset.candidate;
       if (state.queueSource !== "manual") state.queueSource = null;  // re-simulate for the new bay
@@ -755,11 +765,11 @@ function renderCandidates() {
           : Math.max(0, Math.min(1000, Math.floor(Number(value))));
         state.queueSource = "manual";
         $("queue-result").innerHTML = queueResultMarkup(gap, selected);
-        $("candidates-content").querySelector(".queue-source").textContent = "Your counts. The app can't check them.";
+        $("bus-test").querySelector(".queue-source").textContent = "Your counts. The app can't check them.";
       });
     }
   }
-  $("candidates-content").querySelectorAll("[data-queue-example]").forEach((button) => button.addEventListener("click", () => applyQueueExample(button.dataset.queueExample)));
+  $("bus-pick").querySelectorAll("[data-queue-example]").forEach((button) => button.addEventListener("click", () => applyQueueExample(button.dataset.queueExample)));
   renderMap();
   syncUrl();
 }
@@ -1073,8 +1083,8 @@ function renderMap() {
   renderRerouteSummary(gap, swap, reroute);
   $("map-panel").classList.toggle("has-swap", Boolean(reroute));
   const special = route().serviceType !== "regular";
-  $("map-step").textContent = special ? "See the route" : "See the reroute";
-  $("map-title").textContent = special ? `Where does the ${state.route} go?` : "Where would the borrowed bus go?";
+  $("map-step").textContent = special ? "See the route" : "Pick a bus";
+  $("map-title").textContent = special ? `Where does the ${state.route} go?` : "Which bus could fill the gap?";
   $("map-subtitle").textContent = reroute
     ? `The borrowed bus normally runs the ${swap.donorId} (dashed black line). To cover the ${state.route} gap at ${timeLabel(swap.trip.minute)}, it would follow the ${state.route} line instead.`
     : special ? `Published route geometry for ${state.route} from UBC Exchange. No reassignment scenario is shown for this service.`

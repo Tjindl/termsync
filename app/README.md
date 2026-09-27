@@ -6,9 +6,9 @@ From the repository root, run `python3 -m http.server 5173` and open `http://loc
 
 The page has 12 selectable routes from UBC Exchange. Ten regular routes (99, R4, 49, 9, 44, 84, 4, 14, 25, 33) support the queue comparison. Route 68 is a [UBC campus shuttle](https://planning.ubc.ca/transportation/transit) and N17 has timetable and map context only. Neither is offered as a city-route donor. Queue counts in step 03 start from a **Monte Carlo student-demand simulation**; they are editable estimates, not observations.
 
-1. Pick a route. For the 10 regular routes, step 01 is a **line chart by hour**. It plots simulated students leaving UBC Exchange on that route each hour (Mon–Fri average, or one weekday) from the team's Monte Carlo model. The dashed line is the capacity of the buses the 2026 timetable runs each hour: the buses scheduled, times the capacity per bus implied by TransLink's 2025 TSPR loads (average peak load ÷ load factor). Each dot is coloured by how full that hour is: red overloaded (100%+), orange crowded (84–99%), yellow moderate (60–83%), green lighter (under 60%). Clicking an hour jumps steps 02–03 to it; the shaded band is the TransLink time block it falls in. The demand is simulated and counts students only, not all riders. Routes 68 and N17 have no simulated demand, so they keep the time-block bar chart of fall 2025 TSPR **average peak passengers on board**.
-2. Pick a time block, hour, and departure on the 2026-09-28 TransLink GTFS timetable. Step 02 shows the gap to the next departure. The historical load and timetable are from different years and are not matched observations.
-3. Step 03 searches other regular routes for a departure inside a gap of 4–60 minutes. **Hard rules** decide whether the move is possible at all:
+1. Pick a route. For the 10 regular routes, step 1 is a **line chart by hour**. It plots simulated students leaving UBC Exchange on that route each hour (Mon–Fri average, or one weekday) from the team's Monte Carlo model. The dashed line is the capacity of the buses the 2026 timetable runs each hour: the buses scheduled, times the capacity per bus implied by TransLink's 2025 TSPR loads (average peak load ÷ load factor). Each dot is coloured by how full that hour is: red overloaded (100%+), orange crowded (84–99%), yellow moderate (60–83%), green lighter (under 60%). Clicking an hour jumps steps 02–03 to it; the shaded band is the TransLink time block it falls in. The demand is simulated and counts students only, not all riders. Routes 68 and N17 have no simulated demand, so they keep the time-block bar chart of fall 2025 TSPR **average peak passengers on board**.
+2. Pick a time block, hour, and departure on the 2026-09-28 TransLink GTFS timetable. Step 2 shows the gap to the next departure. The historical load and timetable are from different years and are not matched observations.
+3. Step 3, **Which bus could fill the gap?**, searches other regular routes for a departure inside a gap of 4–60 minutes. **Hard rules** decide whether the move is possible at all:
    - the bus leaves from a bay within 250 m straight-line of the target bay
    - its previous GTFS vehicle-block trip ends within 500 m of that bay at least five minutes earlier, or this is its first trip of the day
    - electric trolley buses (4, 9, 14) only cover other trolley routes
@@ -22,19 +22,19 @@ The page has 12 selectable routes from UBC Exchange. Ten regular routes (99, R4,
    - its own route averaged 84%+ peak load in that block
 
    Options are ranked by fewest cautions, then the largest simulated wait saving, then the most even target gap, and each route appears at most once. When the app picks a departure for you, it chooses the gap whose best option has the fewest cautions and then saves the most simulated time. All thresholds are in `SCREEN` in `app.js`. These are screening rules for the demo, not TransLink operating rules.
-4. Step 03 opens by comparing **three ways to handle the gap**, using the simulated line counts described in 5 for the chosen weekday. The score is bay-only passenger-minutes:
+4. Picking a bus redraws the map in step 3: the donor's usual route and the route it would cover, with the bay change and destination difference. It shows the next published trip when one appears in the GTFS block. A blank next trip does not prove the bus or driver is free; depot movement and shifts are unknown.
+5. Below the map, step 3 fills in how many people are **currently waiting** at the two bays. Each count is the route's simulated students leaving UBC per hour on the weekday chosen in step 01 (or the Mon–Fri average), spread evenly over the hour, from that route's previous departure to the rerouted departure. Type over either count to use your own. The displayed bay-only wait calculation is `target queue × (next target departure − rerouted departure) − donor queue × (next donor departure − removed donor departure)`. A positive result means less waiting for those queues; a negative result means more. Moving a donor bus changes its own maximum departure gap, which is shown alongside the target gap. Changing the route, time or departure returns to simulated counts.
+6. Step 4, **How should we handle this gap?**, compares **three ways to handle the gap**, using the simulated line counts described in 5 for the chosen weekday. The score is bay-only passenger-minutes:
    - **redirect** the best screened bus
    - **add one trip** at the middle of the gap
    - **leave it**
 
    It recommends the first of these that holds:
    1. Redirect, if that saves waiting.
-   2. Add a trip, if the hour runs at 84%+ of its scheduled capacity (the step 01 chart).
+   2. Add a trip, if the hour runs at 84%+ of its scheduled capacity (the step 1 chart).
    3. Leave it.
 
    An added trip always helps riders at least as much as a redirect, but it needs a spare bus and driver.
-5. Below the comparison, step 03 fills in how many people are **currently waiting** at the two bays. Each count is the route's simulated students leaving UBC per hour on the weekday chosen in step 01 (or the Mon–Fri average), spread evenly over the hour, from that route's previous departure to the rerouted departure. Type over either count to use your own. The displayed bay-only wait calculation is `target queue × (next target departure − rerouted departure) − donor queue × (next donor departure − removed donor departure)`. A positive result means less waiting for those queues; a negative result means more. Moving a donor bus changes its own maximum departure gap, which is shown alongside the target gap. Changing the route, time or departure returns to simulated counts.
-6. Step 04 maps the donor's usual route and the route it would cover, with the bay change and destination difference. It shows the next published trip when one appears in the GTFS block. A blank next trip does not prove the bus or driver is free; depot movement and shifts are unknown.
 
 **Shareable views.** The address bar always describes the current view, for example `?route=R4&day=thu&hour=18&trip=…&bus=…`, so a slide or a message can link straight to it. With no parameters, the page opens on the crunch: R4, Thursday, 18:00. Figures and chart exports for the deck are in [`presentation/`](../presentation/key-numbers.md).
 

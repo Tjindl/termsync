@@ -283,7 +283,7 @@ h2 { font-size: var(--t-2xl); }
 
 /* ── Step 3: options, buses to redirect, line counts ──────────────────────────────────── */
 .metric-label { display: block; color: var(--ink-2); font-size: var(--t-sm); }
-.compare { margin-bottom: var(--s-6); }
+.compare { margin: 0; }
 .compare-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); margin-top: var(--s-3); }
 .compare-card { padding: var(--s-4); border: var(--hair) solid var(--rule); border-radius: var(--r-md); background: var(--paper); }
 .compare-card.is-best { border-color: var(--ink); background: var(--surface); box-shadow: var(--shadow); }
@@ -328,7 +328,9 @@ h2 { font-size: var(--t-2xl); }
 .no-candidates strong { font-size: var(--t-md); }
 .no-candidates p { margin-top: var(--s-1); color: var(--ink-2); font-size: var(--t-sm); }
 
+.bus-pick { margin-bottom: var(--s-5); }
 .queue-workspace { margin-top: var(--s-5); padding: var(--s-5); border-radius: var(--r-md); background: var(--paper); }
+.queue-title { margin-bottom: var(--s-4); font-size: var(--t-xl); }
 .queue-tradeoff { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-4); }
 .queue-tradeoff strong { display: block; margin-top: var(--s-1); font: 500 var(--t-lg) var(--font-data); }
 .queue-tradeoff > div:last-child strong { color: var(--loss); }
@@ -419,6 +421,7 @@ h2 { font-size: var(--t-2xl); }
 .map-legend-routes { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); }
 .map-legend span { display: inline-flex; align-items: center; gap: var(--s-2); }
 .map-legend .donor-only { display: none; }
+.map-legend .legend-source { margin-left: auto; }
 .map-panel.has-swap .map-legend .donor-only { display: inline-flex; }
 .key-line { display: inline-block; width: 22px; height: 4px; border-radius: var(--r-pill); }
 .key-line.is-donor { height: 0; border-top: 3px dashed var(--ink); border-radius: 0; }
