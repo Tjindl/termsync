@@ -12,6 +12,7 @@ const state = {
   targetQueue: null,
   donorQueue: null,
   queueSource: null,
+  weekday: "avg",
 };
 const MAX_FILLABLE_GAP = 60;
 // One screened reroute the simulated demand favours (the day's largest saving) and a clean timetable fit it rejects.
@@ -39,7 +40,7 @@ function serviceWeekday() {
 
 /** Simulated students who reach a route's bay between two minutes, arriving evenly within each hour. */
 function simulatedWaiting(routeId, from, to) {
-  const perHour = state.demand?.departuresPerHour[serviceWeekday()]?.[routeId];
+  const perHour = hourlyDemand(routeId);
   if (!perHour) return null;
   let total = 0;
   for (let minute = from; minute < to;) {
@@ -201,8 +202,143 @@ function hourTick(minute) {
   return String(Math.floor(minute / 60) % 24).padStart(2, "0");
 }
 
+// Hourly student demand from the team's Monte Carlo model: simulated students only, by weekday.
+const WEEKDAY_CHOICES = [["avg", "Mon–Fri"], ["MONDAY", "Mon"], ["TUESDAY", "Tue"], ["WEDNESDAY", "Wed"], ["THURSDAY", "Thu"], ["FRIDAY", "Fri"]];
+
+/**
+ * Simulated students leaving UBC per hour on a route (index = hour of day; null = outside the simulated
+ * hours) for the chosen weekday, or the Mon–Fri average.
+ */
+function hourlyDemand(routeId) {
+  const days = state.weekday === "avg" ? WEEKDAY_CHOICES.slice(1).map(([day]) => day) : [state.weekday];
+  const series = days.map((day) => state.demand?.departuresPerHour[day]?.[routeId]);
+  if (!series.every(Boolean)) return null;
+  return series[0].map((_, hour) => (series.some((values) => values[hour] == null) ? null
+    : series.reduce((sum, values) => sum + values[hour], 0) / series.length));
+}
+
+/** Riders one bus can carry on a route: TSPR average peak load ÷ load factor, median over its time blocks. */
+function busCapacity(routeId) {
+  const values = Object.values(route(routeId).blocks).filter((b) => b.loadPercent > 0 && b.peakOnboard > 0)
+    .map((b) => b.peakOnboard / (b.loadPercent / 100)).sort((a, b) => a - b);
+  return values.length ? values[Math.floor(values.length / 2)] : null;
+}
+
+/** Capacity leaving UBC each hour: buses the 2026 timetable schedules that hour × one bus's capacity. */
+function hourlyCapacity(routeId) {
+  const perBus = busCapacity(routeId);
+  if (!perBus) return null;
+  const buses = Array(24).fill(0);
+  for (const trip of departures(routeId)) if (trip.minute < 1440) buses[Math.floor(trip.minute / 60)] += 1;
+  return buses.map((count) => count * perBus);
+}
+
+function weekdayLabel() {
+  if (state.weekday === "avg") return "Mon–Fri average";
+  return state.weekday[0] + state.weekday.slice(1).toLowerCase();
+}
+
+function niceStep(raw) {
+  const power = 10 ** Math.floor(Math.log10(raw || 1));
+  return [1, 2, 2.5, 5, 10].map((f) => f * power).find((step) => step >= raw);
+}
+
+/** Pick an hour on the chart: jump steps 02 and 03 to it (and to the time block it falls in). */
+function selectChartHour(hour) {
+  const period = state.data.timeBlocks.find((item) => hour * 60 >= item.start && hour * 60 < item.end);
+  if (period) state.block = period.code;
+  selectHour(hour * 60);
+}
+
 function renderPeriods() {
+  if (route().serviceType !== "nightbus" && hourlyDemand(state.route) && hourlyCapacity(state.route)) renderHourlyChart();
+  else renderBlockBars();
+}
+
+// Step 01 as a line: students leaving UBC on this route each hour, against the model's hourly capacity.
+// Each dot is coloured by how full that hour is; the shaded band is the time block steps 02–03 use.
+function renderHourlyChart() {
+  const students = hourlyDemand(state.route);
+  const info = { capacity: hourlyCapacity(state.route) };
+  const hours = students.map((value, hour) => (value != null ? hour : null)).filter((hour) => hour !== null);
+  $("pressure-step").textContent = "CHOOSE AN HOUR";
+  $("pressure-title").textContent = "When is it busiest?";
+  $("pressure-subtitle").textContent = `Students leaving UBC on the ${state.route} each hour · ${weekdayLabel()}`;
+  $("pressure-source").textContent = "MONTE CARLO DEMAND";
+  $("pressure-source").className = "source-tag";
+  $("pressure-note").textContent = "Simulated student demand from the team's Monte Carlo model: students only, not all riders, and not observed counts. The dashed line is the capacity of the buses the 2026 timetable runs each hour (TransLink's implied capacity per bus × buses scheduled). Click an hour to see its departures.";
+  const width = Math.max(280, Math.round($("period-list").clientWidth || 560)), height = 250;
+  const pad = { left: 40, right: 12, top: 12, bottom: 26 };
+  const top = Math.max(1, ...hours.map((hour) => Math.max(students[hour], info.capacity[hour])));
+  const step = niceStep(top / 4), yMax = Math.ceil(top / step) * step;
+  const first = hours[0], last = hours[hours.length - 1];
+  const x = (hour) => pad.left + (hour - first) / (last - first) * (width - pad.left - pad.right);
+  const y = (value) => pad.top + (1 - value / yMax) * (height - pad.top - pad.bottom);
+  const half = (x(first + 1) - x(first)) / 2;
+  const path = (values) => hours.map((hour, i) => `${i ? "L" : "M"}${x(hour).toFixed(1)} ${y(values[hour] ?? 0).toFixed(1)}`).join("");
+  const grid = [];
+  for (let value = 0; value <= yMax; value += step) {
+    grid.push(`<line class="hour-grid" x1="${pad.left}" x2="${width - pad.right}" y1="${y(value).toFixed(1)}" y2="${y(value).toFixed(1)}" />
+      <text class="hour-ylabel" x="${pad.left - 6}" y="${y(value).toFixed(1)}" dy="0.32em">${value.toLocaleString("en-CA")}</text>`);
+  }
+  const every = half * 2 < 22 ? 3 : half * 2 < 34 ? 2 : 1;
+  const ticks = hours.filter((hour) => (hour - first) % every === 0)
+    .map((hour) => `<text class="hour-xlabel" x="${x(hour).toFixed(1)}" y="${height - 8}">${String(hour).padStart(2, "0")}</text>`).join("");
+  const period = block();
+  const bandStart = Math.max(first, period.start / 60), bandEnd = Math.min(last, period.end / 60 - 1);
+  const band = bandEnd >= bandStart ? `<rect class="hour-band" x="${(x(bandStart) - half).toFixed(1)}" y="${pad.top}" width="${(x(bandEnd) - x(bandStart) + 2 * half).toFixed(1)}" height="${height - pad.top - pad.bottom}" />` : "";
+  const selected = Math.floor(state.hour / 60);
+  const points = hours.map((hour) => {
+    const load = info.capacity[hour] ? students[hour] / info.capacity[hour] * 100 : null;
+    const status = load === null ? null : pressureStatus(load);
+    const label = `${String(hour).padStart(2, "0")}:00–${String(hour + 1).padStart(2, "0")}:00: about ${Math.round(students[hour]).toLocaleString("en-CA")} students leaving UBC; `
+      + (status ? `scheduled capacity about ${Math.round(info.capacity[hour]).toLocaleString("en-CA")}, ${Math.round(load)}% full, ${status.label.toLowerCase()}` : "no buses scheduled");
+    return `<g class="hour-point${status ? ` is-${status.short}` : ""}" data-hour="${hour}" role="button" tabindex="0" aria-pressed="${hour === selected}" aria-label="${escapeHtml(label)}" data-tip="${escapeHtml(label)}">
+      <rect class="hour-hit" x="${(x(hour) - half).toFixed(1)}" y="${pad.top}" width="${(2 * half).toFixed(1)}" height="${height - pad.top - pad.bottom}" />
+      ${hour === selected ? `<line class="hour-guide" x1="${x(hour).toFixed(1)}" x2="${x(hour).toFixed(1)}" y1="${pad.top}" y2="${height - pad.bottom}" />` : ""}
+      <circle cx="${x(hour).toFixed(1)}" cy="${y(students[hour]).toFixed(1)}" r="${hour === selected ? 6.5 : 5}" /></g>`;
+  }).join("");
+  $("period-list").innerHTML = `<div class="hour-chart">
+      <div class="weekday-tabs" role="group" aria-label="Weekday">${WEEKDAY_CHOICES.map(([day, text]) => `<button type="button" class="weekday-tab" data-weekday="${day}" aria-pressed="${day === state.weekday}">${text}</button>`).join("")}</div>
+      <div class="hour-plot">
+        <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Students leaving UBC on route ${escapeHtml(state.route)} each hour, ${escapeHtml(weekdayLabel())}">
+          ${band}${grid.join("")}<path class="hour-capacity" d="${path(info.capacity)}" /><path class="hour-line" d="${path(students)}" />${points}${ticks}
+        </svg>
+        <div class="hour-tip" hidden></div>
+      </div>
+      <div class="block-legend hour-legend">
+        <span><i class="legend-line"></i>Students leaving UBC</span><span><i class="legend-line is-capacity"></i>Scheduled capacity</span>
+        <span class="legend-caption">Dot colour:</span>${LOAD_LEVELS.map((level) => `<span><i class="block-swatch is-${level.key}"></i>${level.label} <small>${level.range}</small></span>`).join("")}
+      </div>
+    </div>`;
+  const tip = $("period-list").querySelector(".hour-tip");
+  $("period-list").querySelectorAll("[data-weekday]").forEach((button) => button.addEventListener("click", () => {
+    state.weekday = button.dataset.weekday;
+    clearQueueCounts();
+    render();
+  }));
+  $("period-list").querySelectorAll("[data-hour]").forEach((point) => {
+    const hour = Number(point.dataset.hour);
+    const show = () => {
+      tip.textContent = point.dataset.tip;
+      tip.hidden = false;
+      tip.style.left = `${Math.min(Math.max(x(hour), 110), width - 110)}px`;
+      tip.style.top = `${y(students[hour])}px`;
+    };
+    point.addEventListener("mouseenter", show);
+    point.addEventListener("focus", show);
+    point.addEventListener("mouseleave", () => { tip.hidden = true; });
+    point.addEventListener("blur", () => { tip.hidden = true; });
+    point.addEventListener("click", () => selectChartHour(hour));
+    point.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectChartHour(hour); }
+    });
+  });
+}
+
+function renderBlockBars() {
   const scheduleOnly = route().serviceType === "nightbus";
+  $("pressure-step").textContent = "CHOOSE A TIME BLOCK";
   $("pressure-title").textContent = scheduleOnly ? "When does it run?" : "When is it busiest?";
   $("pressure-subtitle").textContent = scheduleOnly ? "Scheduled departures by time of day" : "Average highest on-board count, by time of day";
   $("pressure-source").textContent = scheduleOnly ? "2026 SCHEDULE" : "2025 HISTORY";
@@ -347,6 +483,60 @@ function queueCandidatesForGap(gap, rules = SCREEN) {
   return result.filter((c) => !seen.has(c.donorId) && seen.add(c.donorId)).slice(0, 3);
 }
 
+/**
+ * Bay-only waiting saved (passenger-minutes) by each way of handling the selected gap, using the same
+ * simulated line counts as the bus cards: redirect the best screened bus, add one trip at the middle of the gap, or leave it.
+ * Adding a trip always helps riders at least as much as redirecting (nobody loses a bus) but needs a
+ * spare bus and driver, so it's recommended only when the hour is crowded (84%+ of its scheduled capacity).
+ */
+function compareOptions(gap, candidates) {
+  const demand = hourlyDemand(state.route), capacity = hourlyCapacity(state.route);
+  if (!gap || !demand) return null;
+  const length = gap.next.minute - gap.first.minute;
+  if (length < SCREEN.minGapMinutes || length > MAX_FILLABLE_GAP) return null;
+  const mid = gap.first.minute + Math.floor(length / 2), hour = Math.floor(mid / 60) % 24;
+  const queue = simulatedWaiting(state.route, gap.first.minute, mid);
+  if (queue === null) return null;
+  const add = { minute: mid, queue, saved: gap.next.minute - mid, gain: queue * (gap.next.minute - mid),
+    run: state.map?.trips[gap.first.tripId]?.[1] ?? typicalRun(state.route) };
+  const redirect = candidates.filter((candidate) => candidate.simulated).map((candidate) => ({
+    candidate, ...candidate.simulated, gain: candidate.simulatedGain,
+    saved: gap.next.minute - candidate.trip.minute, lost: candidate.donorNextMinute - candidate.trip.minute,
+  })).sort((a, b) => b.gain - a.gain)[0] || null;
+  const load = capacity?.[hour] && demand[hour] != null ? demand[hour] / capacity[hour] * 100 : null;
+  const best = redirect?.gain > 0 ? "redirect" : load >= 84 ? "add" : "leave";
+  return { gap, add, redirect, load, best };
+}
+
+function compareMarkup(result) {
+  if (!result) return "";
+  const { gap, add, redirect, load, best } = result;
+  const signed = (value) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(Math.round(value)).toLocaleString("en-CA")}`;
+  const tone = (value) => (value > 0 ? "is-positive" : value < 0 ? "is-negative" : "");
+  const r = state.route, loadText = load === null ? "" : `${Math.round(load)}% of its scheduled capacity`;
+  const card = (key, kicker, value, text) => `<div class="compare-card${best === key ? " is-best" : ""}">
+      <span class="compare-kicker">${kicker}${best === key ? '<span class="compare-badge">Recommended</span>' : ""}</span>
+      <strong class="compare-value ${tone(value)}">${value === null ? "—" : signed(value)}</strong><small>passenger-minutes at the bays</small>
+      <p>${text}</p></div>`;
+  const redirectText = redirect
+    ? `Move the ${escapeHtml(redirect.candidate.donorId)} at ${timeLabel(redirect.candidate.trip.minute)}: ~${redirect.target} waiting for the ${escapeHtml(r)} leave ${redirect.saved} min sooner, but ~${redirect.donor} waiting for the ${escapeHtml(redirect.candidate.donorId)} wait ${redirect.lost} min longer. No extra bus needed.`
+    : "No bus passes the screen for this gap.";
+  const whyNotRedirect = !redirect ? "no bus can be redirected"
+    : redirect.gain < 0 ? "redirecting a bus would cost other riders more than it saves" : "redirecting a bus would not save any waiting";
+  const verdict = best === "redirect" ? `Redirect the ${escapeHtml(redirect.candidate.donorId)}: it saves more waiting than it costs, without an extra bus.`
+    : best === "add" ? `Add a trip: this hour runs at ${loadText}, and ${whyNotRedirect}.`
+      : `Leave it: this hour runs at ${loadText || "an unknown share of capacity"}, and ${whyNotRedirect}.`;
+  return `<section class="compare" aria-label="Ways to handle this gap">
+    <span class="metric-label">THREE WAYS TO HANDLE THE ${timeLabel(gap.first.minute)} → ${timeLabel(gap.next.minute)} GAP · MONTE CARLO ESTIMATE, ${escapeHtml(weekdayLabel().toUpperCase())}</span>
+    <div class="compare-grid">
+      ${card("redirect", "REDIRECT A BUS", redirect ? redirect.gain : null, redirectText)}
+      ${card("add", "ADD ONE TRIP", add.gain, `Add ${/^(R|8)/.test(r) ? "an" : "a"} ${escapeHtml(r)} at ${timeLabel(add.minute)}: ~${add.queue} waiting leave ${add.saved} min sooner and nobody loses a bus. Needs one more bus and driver for about ${add.run ?? "an hour's"} min plus the trip back.`)}
+      ${card("leave", "LEAVE IT", 0, `The ${timeLabel(gap.next.minute)} ${escapeHtml(r)} takes everyone waiting.${loadText ? ` This hour runs at ${loadText}.` : ""}`)}
+    </div>
+    <p class="compare-verdict">${verdict}</p>
+  </section>`;
+}
+
 function queueResultMarkup(gap, candidate) {
   const targetSave = gap.next.minute - candidate.trip.minute;
   const donorWait = candidate.donorNextMinute - candidate.trip.minute;
@@ -358,7 +548,7 @@ function queueResultMarkup(gap, candidate) {
     : gain < 0 ? `${Math.abs(gain).toLocaleString()} more passenger-minutes waiting at these bays`
       : "No bay-only wait advantage";
   const simulated = state.queueSource === "simulated"
-    ? `<p>Simulated ${serviceWeekday()[0]}${serviceWeekday().slice(1).toLowerCase()} demand: ${state.targetQueue} students reach the ${escapeHtml(state.route)} line in the ${candidate.trip.minute - gap.first.minute} min since its ${timeLabel(gap.first.minute)} bus; ${state.donorQueue} reach the ${escapeHtml(candidate.donorId)} line in the ${candidate.trip.minute - candidate.donorPreviousMinute} min since its ${timeLabel(candidate.donorPreviousMinute)} bus.${candidate.trip.minute < 12 * 60 ? " The simulation has few departures before noon, so morning counts are likely too low." : ""}</p>` : "";
+    ? `<p>Simulated ${escapeHtml(weekdayLabel())} demand: ${state.targetQueue} students reach the ${escapeHtml(state.route)} line in the ${candidate.trip.minute - gap.first.minute} min since its ${timeLabel(gap.first.minute)} bus; ${state.donorQueue} reach the ${escapeHtml(candidate.donorId)} line in the ${candidate.trip.minute - candidate.donorPreviousMinute} min since its ${timeLabel(candidate.donorPreviousMinute)} bus.${candidate.trip.minute < 12 * 60 ? " The simulation has few departures before noon, so morning counts are likely too low." : ""}</p>` : "";
   return `<strong class="${gain > 0 ? "is-positive" : gain < 0 ? "is-negative" : ""}">${heading}</strong>
     <p>${state.targetQueue} × ${targetSave} min saved for ${escapeHtml(state.route)} − ${state.donorQueue} × ${donorWait} min added for ${escapeHtml(candidate.donorId)} = ${gain.toLocaleString()}.</p>${simulated}
     <p>This counts only people waiting at these two bays and assumes the bus can take everyone counted. It excludes passengers along both routes, bay movement and operator constraints.</p>`;
@@ -372,17 +562,18 @@ function applyQueueExample(which) {
   state.tripId = example.tripId;
   state.candidateId = example.candidateId;
   clearQueueCounts();
+  state.weekday = serviceWeekday();  // the examples' savings are for the timetable's weekday
   render();
 }
 
 function renderCandidates() {
   const gap = selectedGap();
   const special = route().serviceType !== "regular";
-  $("candidates-step").textContent = special ? "ROUTE CONTEXT" : "PRIORITIZE A BAY";
-  $("candidates-title").textContent = special ? "How can we use this route?" : "Which line should get the bus?";
+  $("candidates-step").textContent = special ? "ROUTE CONTEXT" : "FILL THE GAP";
+  $("candidates-title").textContent = special ? "How can we use this route?" : "How should we handle this gap?";
   $("candidates-description").textContent = special
     ? "Its published timetable and path are available. This app compares city-bus queue scenarios separately."
-    : "Line counts start from simulated student demand; replace them with counts you observe. See who boards sooner and who waits longer if one scheduled bus changes route.";
+    : "Compare redirecting a bus, adding a trip, or leaving it, using simulated student demand. The line counts below start from the same simulation; replace them with counts you observe.";
   if (special) {
     state.candidateId = null;
     state.swap = null;
@@ -399,7 +590,8 @@ function renderCandidates() {
     ${Object.entries(QUEUE_EXAMPLES).map(([key, example]) => `<button type="button" data-queue-example="${key}">${escapeHtml(example.label)}</button>`).join("")}
     <small>Line counts come from a Monte Carlo student simulation and can be changed below. No live queue feed is connected.</small></div>`;
   const candidates = queueCandidatesForGap(gap);
-  $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "QUEUE OPTION" : "QUEUE OPTIONS"}`;
+  const comparison = compareMarkup(compareOptions(gap, candidates));
+  $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "BUS TO REDIRECT" : "BUSES TO REDIRECT"}`;
   if (!candidates.length) {
     state.candidateId = null;
     state.swap = null;
@@ -407,7 +599,7 @@ function renderCandidates() {
       : !state.map || !state.duties ? "The route map or vehicle blocks are unavailable."
         : gap.next.minute - gap.first.minute > MAX_FILLABLE_GAP ? "This is a scheduled service break, so the app does not propose borrowing a bus for it."
           : "No nearby route follows a suitable path and fits the bus's published next duty for this gap.";
-    $("candidates-content").innerHTML = `${examples}<div class="no-candidates"><span class="no-candidates-icon" aria-hidden="true">∅</span><div><strong>No screened bus to redirect</strong><p>${message}</p></div></div>`;
+    $("candidates-content").innerHTML = `${comparison}${examples}<div class="no-candidates"><span class="no-candidates-icon" aria-hidden="true">∅</span><div><strong>No screened bus to redirect</strong><p>${message}</p></div></div>`;
   } else {
     if (!candidates.some((candidate) => candidate.id === state.candidateId)) {
       state.candidateId = candidates[0].id;
@@ -420,14 +612,14 @@ function renderCandidates() {
       state.donorQueue = selected.simulated?.donor ?? null;
       state.queueSource = selected.simulated ? "simulated" : null;
     }
-    const sourceLabel = state.queueSource === "simulated" ? `SIMULATED STUDENT DEMAND · ${serviceWeekday()} · NOT OBSERVED`
+    const sourceLabel = state.queueSource === "simulated" ? `SIMULATED STUDENT DEMAND · ${weekdayLabel().toUpperCase()} · NOT OBSERVED`
       : state.queueSource === "manual" ? "MANUAL COUNTS · NOT VERIFIED BY APP" : "NO SIMULATED DEMAND FOR THIS TIME · ENTER COUNTS";
     const dutyNote = selected.duty.next
       ? `Its next published trip starts ${timeLabel(selected.duty.next[0])}. ${selected.emptyRunKm ? `After an empty run of about ${selected.emptyRunKm.toFixed(1)} km it` : "It"} still has ${Math.floor(selected.spareMinutes)} min to spare after ${SCREEN.recoveryMinutes} min recovery.`
       : "No later passenger trip appears in this GTFS vehicle block. Driver and depot duties are still unknown.";
     const cautionNote = selected.cautions.length
       ? `<ul class="queue-cautions">${selected.cautions.map((text) => `<li>${escapeHtml(text)}</li>`).join("")}</ul>` : "";
-    $("candidates-content").innerHTML = `${examples}<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
+    $("candidates-content").innerHTML = `${comparison}${examples}<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
       <span class="candidate-top"><span class="candidate-route">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">Move the ${escapeHtml(candidate.donorId)} at ${timeLabel(candidate.trip.minute)}</span><span class="candidate-time">${escapeHtml(candidate.trip.bay)} → ${escapeHtml(gap.first.bay)} · ${candidate.distance} m</span></span></span>
       <span class="candidate-divider"></span><span class="candidate-facts"><span>${candidate.cautions.length ? `${candidate.cautions.length} ${candidate.cautions.length === 1 ? "caution" : "cautions"}` : "Clean fit"}</span><span>${candidate.reroute.offKm.toFixed(1)} km off path</span></span>
       ${candidate.simulatedGain === null ? "" : `<span class="candidate-sim ${candidate.simulatedGain < 0 ? "is-negative" : ""}">Simulated: ${candidate.simulatedGain === 0 ? "no wait change"
@@ -462,6 +654,46 @@ function renderCandidates() {
   }
   $("candidates-content").querySelectorAll("[data-queue-example]").forEach((button) => button.addEventListener("click", () => applyQueueExample(button.dataset.queueExample)));
   renderMap();
+  syncUrl();
+}
+
+// ── Shareable views ─────────────────────────────────────────────────────────────────────
+// The address bar always describes the current view (?route=R4&day=thu&hour=18&trip=…&bus=…), so a
+// slide or a message can link straight to it.
+const DAY_PARAMS = { avg: "avg", mon: "MONDAY", tue: "TUESDAY", wed: "WEDNESDAY", thu: "THURSDAY", fri: "FRIDAY" };
+const DEFAULT_VIEW = { route: "R4", day: "thu", hour: 18 };  // the crunch: R4 at 18:00 on a Thursday
+
+function syncUrl() {
+  const day = Object.keys(DAY_PARAMS).find((key) => DAY_PARAMS[key] === state.weekday) || "avg";
+  const params = new URLSearchParams({ route: state.route, day, hour: String(Math.floor(state.hour / 60)) });
+  if (state.tripId) params.set("trip", state.tripId);
+  if (state.candidateId) params.set("bus", state.candidateId);
+  const next = `?${params}`;
+  if (window.location.search !== next) window.history.replaceState(null, "", next);
+}
+
+function openView({ route: routeId, day = "avg", hour, trip = null, bus = null }) {
+  if (!state.data.routes[routeId]) return false;
+  state.route = routeId;
+  state.weekday = DAY_PARAMS[day] || "avg";
+  clearQueueCounts();
+  const minute = Math.max(0, Math.min(27, Number.isFinite(hour) ? hour : 17)) * 60;
+  const period = state.data.timeBlocks.find((item) => minute >= item.start && minute < item.end) || state.data.timeBlocks[0];
+  state.block = period.code;
+  selectHour(minute);
+  if (trip && departures().some((item) => item.tripId === trip)) {
+    state.tripId = trip;
+    state.candidateId = bus;
+    render();
+  }
+  return true;
+}
+
+function viewFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.get("route")) return null;
+  const hour = params.has("hour") ? Number(params.get("hour")) : NaN;
+  return { route: params.get("route"), day: params.get("day") || "avg", hour, trip: params.get("trip"), bus: params.get("bus") };
 }
 
 // ── Route map and rerouting ─────────────────────────────────────────────────────────────
@@ -486,6 +718,14 @@ const DONOR_OFFSET = 7;
 const OFF_ROUTE_KM = 0.08;  // more than 80 m from the bus's usual path counts as off-route
 const KM_PER_LON = 111.32 * Math.cos(49.25 * Math.PI / 180), KM_PER_LAT = 110.57;
 const INSET = { width: 282, height: 150 };
+
+/** Text anchor for a map label at x: the preferred side, unless the label would run off the map. */
+function labelSide(x, text, prefer) {
+  const width = text.length * 7.2 + 16;
+  if (prefer === "start" && x + width > MAP.width - 6) return "end";
+  if (prefer === "end" && x - width < 6) return "start";
+  return prefer;
+}
 
 function routeColor(id) { return ROUTE_COLORS[id] || "var(--ink)"; }
 
@@ -683,11 +923,13 @@ function renderMap() {
     const close = Math.hypot(ex - ox, ey - oy) < 90;
     // Keep the "usual end" label on the far side from where the rerouted bus ends.
     const usualLeft = ox < ex;
+    const endText = `Usual end: ${reroute.own.end.name.replace(" Station", "")}`;
+    const endSide = labelSide(ox, endText, usualLeft ? "end" : "start");
     overlay = `<path class="map-donor-casing" d="${ownD}" /><path class="map-donor" d="${ownD}" />
       <line class="map-end-gap" x1="${ex.toFixed(1)}" y1="${ey.toFixed(1)}" x2="${ox.toFixed(1)}" y2="${oy.toFixed(1)}" />
       <g class="map-end is-covered" style="--route-line:${routeColor(state.route)}"><circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="9" /></g>
       <g class="map-end is-usual"><circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="8" />
-        <text x="${(ox + (usualLeft ? -12 : 12)).toFixed(1)}" y="${(oy - 12).toFixed(1)}" text-anchor="${usualLeft ? "end" : "start"}">Usual end: ${escapeHtml(reroute.own.end.name.replace(" Station", ""))}</text></g>
+        <text x="${(ox + (endSide === "end" ? -12 : 12)).toFixed(1)}" y="${(oy - 12).toFixed(1)}" text-anchor="${endSide}">${escapeHtml(endText)}</text></g>
       <text class="map-gap-label" x="${(close ? ex : (ex + ox) / 2).toFixed(1)}" y="${(close ? ey + 30 : (ey + oy) / 2 + 22).toFixed(1)}" text-anchor="middle">${reroute.endGapKm.toFixed(1)} km apart</text>
       ${mapChip(dcx + 24, dcy + 24, swap.donorId, "is-donor")}`;
     const path = lines[state.route];
@@ -701,9 +943,12 @@ function renderMap() {
 
   const stations = map.stations.filter((s) => MAP_LABELS[s.name]).map((s) => {
     const [x, y] = p.xy([s.lon, s.lat]);
-    const [dx, dy, anchor, minor] = MAP_LABELS[s.name];
+    const [dx, dy, prefer, minor] = MAP_LABELS[s.name];
+    const name = s.name.replace(" Avenue", "");
+    const anchor = labelSide(x, name, prefer);
+    const shift = anchor === prefer ? dx : -dx;  // flipped to the other side of the dot
     return `<g class="map-station${minor ? " is-minor" : ""}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${minor ? 4.5 : 6}" />
-      <text x="${(x + dx).toFixed(1)}" y="${(y + dy).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(s.name.replace(" Avenue", ""))}</text></g>`;
+      <text x="${(x + shift).toFixed(1)}" y="${(y + dy).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(name)}</text></g>`;
   }).join("");
   const [ux, uy] = p.xy(map.ubc);
   const bar = 2 * p.pxPerKm;
@@ -758,7 +1003,10 @@ async function boot() {
       });
     }
     $("app-content").hidden = false;
-    applyQueueExample("peak");
+    let resizeTimer = null;
+    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderPeriods, 150); });
+    const linked = viewFromUrl();
+    if (!linked || !openView(linked)) openView(DEFAULT_VIEW);
   } catch (error) {
     $("app-error").hidden = false;
     $("app-error").textContent = `The planner could not load its data. Serve this folder with a local web server, then reload. ${error.message}`;

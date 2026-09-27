@@ -40,7 +40,7 @@
         <div id="app-content" hidden>
           <div class="work-grid">
             <section class="panel pressure-panel" aria-labelledby="pressure-title">
-              <div class="section-topline"><span class="step">01</span><span>CHOOSE A TIME BLOCK</span></div>
+              <div class="section-topline"><span class="step">01</span><span id="pressure-step">CHOOSE A TIME BLOCK</span></div>
               <div class="section-heading">
                 <div><h2 id="pressure-title">When is it busiest?</h2><p id="pressure-subtitle">Ranked by average highest on-board count</p></div>
                 <span class="source-tag" id="pressure-source">2025 HISTORY</span>
@@ -65,9 +65,9 @@
           <section class="panel candidates-panel" aria-labelledby="candidates-title">
             <div class="candidates-heading">
               <div>
-                <div class="section-topline"><span class="step">03</span><span id="candidates-step">PRIORITIZE A BAY</span></div>
-                <h2 id="candidates-title">Which line should get the bus?</h2>
-                <p id="candidates-description">Line counts start from simulated student demand; replace them with counts you observe.</p>
+                <div class="section-topline"><span class="step">03</span><span id="candidates-step">FILL THE GAP</span></div>
+                <h2 id="candidates-title">How should we handle this gap?</h2>
+                <p id="candidates-description">Compare redirecting a bus, adding a trip, or leaving it, using simulated student demand. The line counts below start from the same simulation; replace them with counts you observe.</p>
               </div>
               <span class="candidate-count" id="candidate-count"></span>
             </div>
