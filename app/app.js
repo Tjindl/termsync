@@ -5,6 +5,8 @@ const state = {
   hour: 17 * 60,
   tripId: null,
   candidateId: null,
+  swap: null,
+  map: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -165,7 +167,7 @@ function renderRoutes() {
   $("route-nav").innerHTML = state.data.targetRoutes.map((id) => {
     const info = route(id);
     const peak = Math.max(...Object.values(info.blocks).map((value) => value.loadPercent));
-    return `<button class="route-button" type="button" data-route="${escapeHtml(id)}" aria-pressed="${id === state.route}">
+    return `<button class="route-button" type="button" data-route="${escapeHtml(id)}" aria-pressed="${id === state.route}" style="--route-color:${routeColor(id)}">
       <span class="route-number">${escapeHtml(id)}</span>
       <span class="route-info"><strong>${escapeHtml(info.name)}</strong><small>Peak block ${Math.round(peak)}% load</small></span>
       <span class="route-arrow" aria-hidden="true">↗</span></button>`;
@@ -215,6 +217,7 @@ function renderCandidates() {
   $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "OPTION" : "OPTIONS"}`;
   if (!candidates.length) {
     state.candidateId = null;
+    state.swap = null;
     const lowerLoadRoutes = Object.entries(state.data.routes).filter(([id, info]) => id !== state.route && info.blocks[String(state.block)]?.loadPercent < 60).length;
     const explanation = !gap ? "Choose a scheduled departure above to inspect its following gap."
       : lowerLoadRoutes === 0 ? "Every other route with a comparable historical load at UBC Exchange is at or above the 60% cutoff in this block. Moving service would be hard to justify from these data."
@@ -226,14 +229,17 @@ function renderCandidates() {
     $("candidates-content").innerHTML = `<div class="no-candidates"><span class="no-candidates-icon" aria-hidden="true">∅</span><div><strong>No suitable nearby trip for this gap</strong><p>${explanation}</p></div>${action}</div>`;
     $("try-option")?.addEventListener("click", () => { state.hour = another.hour; state.tripId = another.tripId; render(); });
     $("try-later")?.addEventListener("click", () => selectBlock(18));
+    renderMap();
     return;
   }
   if (!candidates.some((candidate) => candidate.id === state.candidateId)) state.candidateId = candidates[0].id;
   const selected = candidates.find((candidate) => candidate.id === state.candidateId);
+  state.swap = selected;
   const favorable = selected.benefit >= selected.donorPenalty;
   $("candidates-content").innerHTML = `<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
     <span class="candidate-top"><span class="candidate-route">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">${escapeHtml(route(candidate.donorId).name)}</span><span class="candidate-time">${timeLabel(candidate.trip.minute)} · ${escapeHtml(candidate.trip.bay)}</span></span></span>
     <span class="candidate-divider"></span><span class="candidate-facts"><span>${Math.round(candidate.historical.loadPercent)}% historical load</span><span>${candidate.distance} m away</span></span>
+    ${(() => { const r = rerouteFor(gap, candidate); return r ? `<span class="candidate-reroute">↪ ${r.offKm.toFixed(1)} km off its route · ends ${r.endGapKm.toFixed(1)} km from its usual end</span>` : ""; })()}
   </button>`).join("")}</div>
   <div class="swap-detail" aria-live="polite">
     <div><span class="metric-label">TARGET GAP IF MOVED</span><strong>${selected.targetBefore} → <span>${selected.targetAfter} min</span></strong></div>
@@ -241,6 +247,259 @@ function renderCandidates() {
     <p><span class="swap-verdict ${favorable ? "is-favorable" : ""}">${favorable ? "Worth an operations check" : "Poor schedule tradeoff"}</span><br />${favorable ? "The target gap shrinks at least as much as the donor gap grows." : "The donor gap grows more than the target gap shrinks."} This is a timetable scenario, not an available bus. Check actual loads, vehicle type, driver block and recovery time.</p>
   </div>`;
   $("candidates-content").querySelectorAll("[data-candidate]").forEach((button) => button.addEventListener("click", () => { state.candidateId = button.dataset.candidate; renderCandidates(); }));
+  renderMap();
+}
+
+// ── Route map and rerouting ─────────────────────────────────────────────────────────────
+// Target routes keep one colour everywhere. The nearby bus being borrowed is always orange, like the
+// donor gap in the swap detail. The projection is equirectangular, fitted to the routes: at city
+// scale a kilometre is the same length on both axes, and no map tiles are needed.
+const ROUTE_COLORS = { 99: "var(--route-99)", R4: "var(--route-R4)", 49: "var(--route-49)" };
+const MAP = { width: 1200, minHeight: 400, maxHeight: 640, pad: 30 };
+const MAP_LABELS = {
+  "Commercial–Broadway": [11, -13, "start"], "Joyce–Collingwood": [13, 5, "start"], "Metrotown": [13, 17, "start"],
+  "Broadway–City Hall": [9, 21, "start", true], "Oakridge–41st Avenue": [9, -10, "start", true], "Langara–49th Avenue": [9, 17, "start", true],
+};
+// Sideways offsets (map units) so lines sharing a street draw side by side: the R4 and 49 on SW Marine
+// Drive, and the nearby bus's usual route beside the route it would cover.
+const MAP_OFFSET = { R4: -3, 49: 3, 99: 0 };
+const DONOR_OFFSET = 7;
+const OFF_ROUTE_KM = 0.08;  // more than 80 m from the bus's usual path counts as off-route
+const KM_PER_LON = 111.32 * Math.cos(49.25 * Math.PI / 180), KM_PER_LAT = 110.57;
+const INSET = { width: 282, height: 150 };
+
+function routeColor(id) { return ROUTE_COLORS[id] || "var(--ink)"; }
+
+function mapProjector(bbox, box) {
+  const [minLon, minLat, maxLon, maxLat] = bbox;
+  const k = Math.cos((minLat + maxLat) / 2 * Math.PI / 180);
+  const scale = Math.min((box.width - 2 * box.pad) / ((maxLon - minLon) * k || 1e-9), (box.height - 2 * box.pad) / ((maxLat - minLat) || 1e-9));
+  const offX = box.x + (box.width - (maxLon - minLon) * k * scale) / 2;
+  const offY = box.y + (box.height - (maxLat - minLat) * scale) / 2;
+  return { xy: ([lon, lat]) => [offX + (lon - minLon) * k * scale, offY + (maxLat - lat) * scale], pxPerKm: scale / 111.32 };
+}
+
+function offsetPoints(points, d) {
+  return points.map((p, i) => {
+    const a = points[Math.max(0, i - 1)], b = points[Math.min(points.length - 1, i + 1)];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [p[0] + (b[1] - a[1]) / len * d, p[1] - (b[0] - a[0]) / len * d];
+  });
+}
+
+function svgPath(points) {
+  return points.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join("");
+}
+
+function toKm([lon, lat]) { return [lon * KM_PER_LON, lat * KM_PER_LAT]; }
+
+function densify(coords, stepKm = 0.05) {
+  const points = coords.map(toKm), out = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const [ax, ay] = points[i - 1], [bx, by] = points[i];
+    const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / stepKm));
+    for (let k = 1; k <= steps; k++) out.push([ax + (bx - ax) * k / steps, ay + (by - ay) * k / steps]);
+  }
+  return out;
+}
+
+function distanceToLine([px, py], line) {
+  let best = Infinity;
+  for (let i = 1; i < line.length; i++) {
+    const [ax, ay] = line[i - 1], [bx, by] = line[i];
+    const dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1e-12)));
+    best = Math.min(best, Math.hypot(px - ax - t * dx, py - ay - t * dy));
+  }
+  return best;
+}
+
+/** How far a nearby bus would leave its own route if it covered this gap instead. */
+function rerouteFor(gap, candidate) {
+  const map = state.map;
+  const covered = gap && map?.trips[gap.first.tripId];
+  const usual = candidate && map?.trips[candidate.trip.tripId];
+  if (!covered || !usual) return null;
+  const path = map.shapes[covered[0]], own = map.shapes[usual[0]];
+  const ownLine = own.coords.map(toKm);
+  const points = densify(path.coords);
+  let offKm = 0, totalKm = 0;
+  for (let i = 1; i < points.length; i++) {
+    const step = Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
+    const middle = [(points[i][0] + points[i - 1][0]) / 2, (points[i][1] + points[i - 1][1]) / 2];
+    totalKm += step;
+    if (distanceToLine(middle, ownLine) > OFF_ROUTE_KM) offKm += step;
+  }
+  const [ex, ey] = toKm([path.end.lon, path.end.lat]), [ox, oy] = toKm([own.end.lon, own.end.lat]);
+  return { path, own, pathRun: covered[1], ownRun: usual[1], offKm, sharedKm: totalKm - offKm, totalKm, endGapKm: Math.hypot(ex - ox, ey - oy) };
+}
+
+function typicalRun(routeId) {
+  const runs = departures(routeId).map((trip) => state.map.trips[trip.tripId]?.[1]).filter(Number.isFinite).sort((a, b) => a - b);
+  return runs.length ? runs[Math.floor(runs.length / 2)] : null;
+}
+
+function mapChip(x, y, label, className = "", color = "") {
+  return `<g class="map-chip ${className}" transform="translate(${(x - 24).toFixed(1)},${(y - 24).toFixed(1)})"${color ? ` style="--route-line:${color}"` : ""}>
+    <rect x="-17" y="-11" width="34" height="22" rx="4" /><text dy="0.35em">${escapeHtml(label)}</text></g>`;
+}
+
+/** Point a fraction t of the way along a projected polyline. */
+function pointAlong(points, t) {
+  const lengths = points.slice(1).map((pt, i) => Math.hypot(pt[0] - points[i][0], pt[1] - points[i][1]));
+  let target = lengths.reduce((a, b) => a + b, 0) * t;
+  for (let i = 0; i < lengths.length; i++) {
+    if (target <= lengths[i]) {
+      const f = lengths[i] ? target / lengths[i] : 0;
+      return [points[i][0] + (points[i + 1][0] - points[i][0]) * f, points[i][1] + (points[i + 1][1] - points[i][1]) * f];
+    }
+    target -= lengths[i];
+  }
+  return points[points.length - 1];
+}
+
+/** Frame the map on the routes in play, so they fill the panel. */
+function frameFor(shapes) {
+  const pts = shapes.flatMap((shape) => shape.coords);
+  const box = [Math.min(...pts.map((pt) => pt[0])) - 0.009, Math.min(...pts.map((pt) => pt[1])) - 0.006,
+    Math.max(...pts.map((pt) => pt[0])) + 0.026, Math.max(...pts.map((pt) => pt[1])) + 0.006];  // labels extend right
+  const k = Math.cos((box[1] + box[3]) / 2 * Math.PI / 180);
+  const height = MAP.width * (box[3] - box[1]) / ((box[2] - box[0]) * k) + 2 * MAP.pad;
+  return { box, height: Math.round(Math.min(MAP.maxHeight, Math.max(MAP.minHeight, height))) };
+}
+
+function bayInset(gap, swap) {
+  const bays = new Map();
+  for (const info of Object.values(state.data.routes)) for (const trip of info.departures) bays.set(trip.bay, trip);
+  const all = [...bays.values()];
+  const box = [Math.min(...all.map((b) => b.lon)), Math.min(...all.map((b) => b.lat)), Math.max(...all.map((b) => b.lon)), Math.max(...all.map((b) => b.lat))];
+  const p = mapProjector(box, { x: 0, y: 8, width: INSET.width, height: INSET.height - 8, pad: 22 });
+  const target = bays.get(gap.first.bay), donor = bays.get(swap.trip.bay);
+  const dot = (b) => {
+    const [x, y] = p.xy([b.lon, b.lat]);
+    const role = b === target ? "is-target" : b === donor ? "is-donor" : "";
+    return `<g class="bay ${role}"${role === "is-target" ? ` style="--route-line:${routeColor(state.route)}"` : ""}><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${role ? 7 : 4}" />
+      ${role ? `<text x="${(x + (role === "is-donor" ? -10 : 10)).toFixed(1)}" y="${(y - 11).toFixed(1)}" text-anchor="${role === "is-donor" ? "end" : "start"}">${escapeHtml(b.bay)}</text>` : ""}</g>`;
+  };
+  const [x1, y1] = p.xy([donor.lon, donor.lat]), [x2, y2] = p.xy([target.lon, target.lat]);
+  return `<svg class="bay-inset" viewBox="0 0 ${INSET.width} ${INSET.height}" role="img" aria-label="UBC Exchange: the bus moves from ${escapeHtml(donor.bay)} to ${escapeHtml(target.bay)}, ${swap.distance} metres.">
+    <line class="bay-link" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />
+    ${all.filter((b) => b !== target && b !== donor).map(dot).join("")}${[donor, target].map(dot).join("")}
+    <text class="bay-distance" x="${((x1 + x2) / 2).toFixed(1)}" y="${((y1 + y2) / 2 + 17).toFixed(1)}">${swap.distance} m</text></svg>`;
+}
+
+function renderRerouteSummary(gap, swap, reroute) {
+  const map = state.map;
+  if (!reroute) {
+    const reason = !gap ? "Pick a scheduled departure in step 02." : "No nearby bus can cover this gap, so nothing is rerouted.";
+    $("reroute").innerHTML = `<div class="reroute-card is-wide"><span class="reroute-eyebrow">THE THREE TARGET ROUTES</span>
+      <ul class="route-key">${map.targetRoutes.map((id) => {
+        const shape = map.shapes[map.mainShape[id]];
+        const run = typicalRun(id);
+        return `<li${id === state.route ? ' class="is-selected"' : ""}><span class="chip" style="--route-color:${routeColor(id)}">${escapeHtml(id)}</span>
+          <span><strong>${escapeHtml(route(id).name)}</strong><small>UBC → ${escapeHtml(shape.end.name.replace(" Station", ""))} · ${shape.lengthKm} km${run ? ` · ~${run} min` : ""}</small></span></li>`;
+      }).join("")}</ul></div>
+      <div class="reroute-card"><span class="reroute-eyebrow">NOTHING TO REROUTE YET</span><p class="reroute-note">${reason} When a nearby bus can fill the gap, the map and these cards show how far it would leave its own route.</p></div>`;
+    return;
+  }
+  const target = state.route, donorId = swap.donorId;
+  const minutesDiff = reroute.pathRun - reroute.ownRun;
+  const offShare = reroute.totalKm ? reroute.offKm / reroute.totalKm * 100 : 0;
+  $("reroute").innerHTML = `<div class="reroute-card">
+      <span class="reroute-eyebrow">WHICH BUS IS REROUTED</span>
+      <div class="reroute-pair"><span class="chip is-donor">${escapeHtml(donorId)}</span>
+        <span><strong>${escapeHtml(route(donorId).name)}</strong><small>scheduled ${timeLabel(swap.trip.minute)} from ${escapeHtml(swap.trip.bay)}</small></span></div>
+      <div class="reroute-arrow">would instead run ↓</div>
+      <div class="reroute-pair"><span class="chip" style="--route-color:${routeColor(target)}">${escapeHtml(target)}</span>
+        <span><strong>${escapeHtml(route(target).name)}</strong><small>from ${escapeHtml(gap.first.bay)}</small></span></div>
+    </div>
+    <div class="reroute-card"><span class="reroute-eyebrow">MOVES BAYS AT UBC EXCHANGE</span>${bayInset(gap, swap)}</div>
+    <div class="reroute-card"><dl class="reroute-facts">
+      <div><dt>Off its usual path</dt><dd><strong>${reroute.offKm.toFixed(1)} km</strong> of ${reroute.totalKm.toFixed(1)} km
+        <span class="reroute-bar" aria-hidden="true"><i style="width:${offShare.toFixed(0)}%"></i></span>
+        <small>${reroute.sharedKm < 0.1 ? "No shared street with its usual route" : `${reroute.sharedKm.toFixed(1)} km on streets it normally uses`}</small></dd></div>
+      <div><dt>Trip time</dt><dd><strong>~${reroute.pathRun} min</strong> <small class="inline">vs ${reroute.ownRun} min on its own route (${minutesDiff > 0 ? "+" : minutesDiff < 0 ? "−" : "±"}${Math.abs(minutesDiff)})</small></dd></div>
+    </dl></div>
+    <div class="reroute-card"><dl class="reroute-facts">
+      <div><dt>Finishes at</dt><dd><strong>${escapeHtml(reroute.path.end.name)}</strong>
+        <small>${reroute.endGapKm.toFixed(1)} km (straight line) from its usual end, ${escapeHtml(reroute.own.end.name)}</small></dd></div>
+    </dl>
+    <p class="reroute-note">In short: the ${escapeHtml(donorId)} bus leaves its route for ${reroute.offKm.toFixed(1)} km and finishes ${reroute.endGapKm.toFixed(1)} km from where it normally ends. It then needs an empty run back, or a return ${escapeHtml(target)} trip, to rejoin its own schedule.</p></div>`;
+}
+
+function renderMap() {
+  if (!state.map) return;
+  const map = state.map;
+  const gap = selectedGap();
+  const swap = state.swap;
+  const reroute = swap ? rerouteFor(gap, swap) : null;
+  const covered = gap && map.trips[gap.first.tripId] ? map.shapes[map.trips[gap.first.tripId][0]] : null;
+  const shapeFor = (id) => (id === state.route && covered ? covered : map.shapes[map.mainShape[id]]);
+  const frame = frameFor([...map.targetRoutes.map(shapeFor), ...(reroute ? [reroute.own] : [])]);
+  const p = mapProjector(frame.box, { x: 0, y: 0, width: MAP.width, height: frame.height, pad: MAP.pad });
+
+  const network = map.network.map((line) => svgPath(line.map(p.xy))).join("");
+  const rail = map.skytrain.map((line) => `<path class="map-rail" d="${svgPath(line.coords.map(p.xy))}" />`).join("");
+  const order = [...map.targetRoutes.filter((id) => id !== state.route), state.route];  // selected route drawn last, on top
+  const lines = {};
+  const routes = order.map((id) => {
+    const points = lines[id] = offsetPoints(shapeFor(id).coords.map(p.xy), MAP_OFFSET[id] || 0);
+    const d = svgPath(points);
+    const [cx, cy] = pointAlong(points, 0.62);
+    const role = id === state.route ? "is-selected" : reroute ? "is-faded" : "";
+    return `<g class="map-route ${role}" data-map-route="${escapeHtml(id)}" style="--route-line:${routeColor(id)}">
+      <path class="map-casing" d="${d}" /><path class="map-line" d="${d}" /><path class="map-hit" d="${d}"><title>Route ${escapeHtml(id)}: ${escapeHtml(route(id).name)}</title></path>
+      ${mapChip(cx + 24, cy + 24, id)}</g>`;
+  }).join("");
+
+  let overlay = "", bus = "";
+  if (reroute) {
+    const own = offsetPoints(reroute.own.coords.map(p.xy), DONOR_OFFSET);
+    const ownD = svgPath(own);
+    const [ex, ey] = p.xy([reroute.path.end.lon, reroute.path.end.lat]);
+    const [ox, oy] = p.xy([reroute.own.end.lon, reroute.own.end.lat]);
+    const [dcx, dcy] = pointAlong(own, 0.45);
+    const close = Math.hypot(ex - ox, ey - oy) < 90;
+    // Keep the "usual end" label on the far side from where the rerouted bus ends.
+    const usualLeft = ox < ex;
+    overlay = `<path class="map-donor-casing" d="${ownD}" /><path class="map-donor" d="${ownD}" />
+      <line class="map-end-gap" x1="${ex.toFixed(1)}" y1="${ey.toFixed(1)}" x2="${ox.toFixed(1)}" y2="${oy.toFixed(1)}" />
+      <g class="map-end is-covered" style="--route-line:${routeColor(state.route)}"><circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="9" /></g>
+      <g class="map-end is-usual"><circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="8" />
+        <text x="${(ox + (usualLeft ? -12 : 12)).toFixed(1)}" y="${(oy - 12).toFixed(1)}" text-anchor="${usualLeft ? "end" : "start"}">Usual end: ${escapeHtml(reroute.own.end.name.replace(" Station", ""))}</text></g>
+      <text class="map-gap-label" x="${(close ? ex : (ex + ox) / 2).toFixed(1)}" y="${(close ? ey + 30 : (ey + oy) / 2 + 22).toFixed(1)}" text-anchor="middle">${reroute.endGapKm.toFixed(1)} km apart</text>
+      ${mapChip(dcx + 24, dcy + 24, swap.donorId, "is-donor")}`;
+    const path = lines[state.route];
+    const d = svgPath(path);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const [mx, my] = pointAlong(path, 0.35);
+    bus = `<g class="map-bus"${reduce ? ` transform="translate(${mx.toFixed(1)},${my.toFixed(1)})"` : ""}>
+      <circle r="9" /><path d="M-4 -3h8v5h-8z M-3 3.5a1 1 0 1 0 0.01 0 M3 3.5a1 1 0 1 0 0.01 0" />
+      ${reduce ? "" : `<animateMotion dur="${Math.max(6, reroute.totalKm * 0.55).toFixed(1)}s" repeatCount="indefinite" path="${d}" />`}</g>`;
+  }
+
+  const stations = map.stations.filter((s) => MAP_LABELS[s.name]).map((s) => {
+    const [x, y] = p.xy([s.lon, s.lat]);
+    const [dx, dy, anchor, minor] = MAP_LABELS[s.name];
+    return `<g class="map-station${minor ? " is-minor" : ""}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${minor ? 4.5 : 6}" />
+      <text x="${(x + dx).toFixed(1)}" y="${(y + dy).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(s.name.replace(" Avenue", ""))}</text></g>`;
+  }).join("");
+  const [ux, uy] = p.xy(map.ubc);
+  const bar = 2 * p.pxPerKm;
+  const label = reroute
+    ? `Map: the ${swap.donorId} bus from ${swap.trip.bay} would run route ${state.route} to ${reroute.path.end.name} instead of its usual trip to ${reroute.own.end.name}; ${reroute.offKm.toFixed(1)} km off its usual path, ending ${reroute.endGapKm.toFixed(1)} km from its usual end.`
+    : `Map of routes ${map.targetRoutes.join(", ")} leaving UBC Exchange: ${map.targetRoutes.map((id) => `${id} to ${shapeFor(id).end.name}`).join("; ")}.`;
+  $("route-map").innerHTML = `<svg id="map-svg" viewBox="0 0 ${MAP.width} ${frame.height}" role="img" aria-label="${escapeHtml(label)}">
+    <path class="map-network" d="${network}" />${rail}${routes}${overlay}${stations}
+    <g class="map-ubc"><circle cx="${ux.toFixed(1)}" cy="${uy.toFixed(1)}" r="10" /><circle class="map-ubc-core" cx="${ux.toFixed(1)}" cy="${uy.toFixed(1)}" r="3.5" />
+      <text x="${(ux - 6).toFixed(1)}" y="${(uy + 30).toFixed(1)}">UBC Exchange</text></g>${bus}
+    <g class="map-scale" transform="translate(28,${frame.height - 22})"><path d="M0 -5V5M0 0H${bar.toFixed(1)}M${bar.toFixed(1)} -5V5" /><text x="${(bar + 8).toFixed(1)}" dy="0.35em">2 km</text></g>
+    <g class="map-north" transform="translate(${MAP.width - 30},32)"><path d="M0 -13L6 4L0 0L-6 4Z" /><text y="18" text-anchor="middle">N</text></g>
+  </svg>`;
+  renderRerouteSummary(gap, swap, reroute);
+  $("map-subtitle").textContent = reroute
+    ? `The orange bus normally runs the ${swap.donorId} (dashed orange). To cover the ${state.route} gap at ${timeLabel(swap.trip.minute)}, it would follow the ${state.route} line instead.`
+    : `The three target routes, colour coded. Once step 03 finds a nearby bus, the map shows how far that bus would be rerouted.`;
 }
 
 function render() {
@@ -252,10 +511,20 @@ function render() {
 
 async function boot() {
   try {
+    // The map is optional: the planner still works if route_map.json is missing.
+    const mapRequest = fetch("app/route_map.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
     const response = await fetch("app/data.json");
     if (!response.ok) throw new Error(`Data request failed (${response.status})`);
     state.data = await response.json();
     if (!state.data.routes?.[state.route]) throw new Error("The route data is missing.");
+    state.map = await mapRequest;
+    if (state.map) {
+      $("map-panel").hidden = false;
+      $("route-map").addEventListener("click", (event) => {
+        const line = event.target.closest("[data-map-route]");
+        if (line && line.dataset.mapRoute !== state.route) selectRoute(line.dataset.mapRoute);
+      });
+    }
     const initial = selectDefaultTrip(state.route, state.block);
     state.hour = initial.hour;
     state.tripId = initial.tripId;

@@ -13,3 +13,18 @@ The candidate is a proposed **trip reassignment**, not a real-time bus location,
 `app/data.json` is a compact, dated snapshot of 10 routes and 1,047 UBC Exchange departures. Rebuild it with `scripts/build_app_data.py --gtfs google_transit.zip --tspr-peak-loads tspr2025_bus_peakload_yearlinedaytypeseasontimerangedirection.csv --out app/data.json` after downloading the [official GTFS feed](https://gtfs-static.translink.ca/gtfs/google_transit.zip) and [official 2025 TSPR CSV](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_peakload_yearlinedaytypeseasontimerangedirection.csv). The script needs only Python's standard library.
 
 The supplied synthetic activity is kept in the separate [`data/` package](../data/README.md) and is not used to estimate bus loads or specific bus arrival times. For the hackathon, run the source analysis and build the curated tables in Databricks before presenting the app's decisions.
+
+**Step 04, the route map.** The 99, R4 and 49 keep one colour everywhere (route buttons, map lines, chips). The nearby bus is always orange. When step 03 finds a nearby bus, the map shows:
+- its usual route, dashed
+- the route it would run instead, with the bus riding it
+- where it would finish compared with its usual end
+
+The cards below the map spell out the reroute:
+- **Bay change:** which UBC Exchange bays it moves between, and how far apart they are.
+- **Off its usual path:** kilometres of the covered trip that are more than 80 m from the bus's usual path, checked every 50 m.
+- **Trip time:** the covered trip's scheduled run time, next to the bus's own.
+- **Finish:** the straight-line distance from where it normally ends.
+
+Each candidate card also shows a one-line reroute preview.
+
+Geometry, trip shapes and run times come from the GTFS feed for every departure in `data.json`, so the map needs no tiles and works offline. Rebuild it with `python3 scripts/build_route_map.py --gtfs google_transit.zip --data app/data.json --out app/route_map.json` (standard library only; it reuses the sample date and helpers in `scripts/build_app_data.py`). The page still works if `app/route_map.json` is missing; step 04 just stays hidden.

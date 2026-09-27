@@ -71,6 +71,30 @@
             </div>
             <div id="candidates-content"></div>
           </section>
+
+          <section class="panel map-panel" id="map-panel" aria-labelledby="map-title" hidden>
+            <div class="candidates-heading">
+              <div>
+                <div class="section-topline"><span class="step">04</span><span>SEE THE REROUTE</span></div>
+                <h2 id="map-title">Where would the nearby bus go?</h2>
+                <p id="map-subtitle"></p>
+              </div>
+              <span class="source-tag schedule-tag">2026 GTFS SHAPES</span>
+            </div>
+            <div class="map-body">
+              <div id="route-map" class="route-map"></div>
+              <aside id="reroute" class="reroute" aria-live="polite"></aside>
+            </div>
+            <div class="map-legend" aria-hidden="true">
+              <span><i class="key-line" style="background:var(--route-99)"></i>99</span>
+              <span><i class="key-line" style="background:var(--route-R4)"></i>R4</span>
+              <span><i class="key-line" style="background:var(--route-49)"></i>49</span>
+              <span><i class="key-line is-donor"></i>Nearby bus: its usual route</span>
+              <span><i class="key-dot"></i>Nearby bus: rerouted trip</span>
+              <span><i class="key-line is-rail"></i>SkyTrain</span>
+              <span><i class="key-line is-network"></i>Other bus routes</span>
+            </div>
+          </section>
         </div>
       </main>
 
