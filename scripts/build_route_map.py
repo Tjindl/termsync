@@ -2,9 +2,12 @@
 """Build app/route_map.json: map geometry for the planner, from the TransLink GTFS feed.
 
 For every departure in app/data.json (all routes leaving UBC Exchange on the sample date) it
-records the trip's shape, its scheduled run time and where it ends, so the page can show how far
-a nearby bus would be rerouted if it covered another route's gap. For context it adds one shape
-per other bus route (drawn faintly), the SkyTrain lines and stations. Standard library only.
+records the trip's shape, its scheduled run time and where it ends, plus what the same bus does
+next in its GTFS vehicle block (when and where its next trip starts, and its next departure from
+UBC). The page uses this to show how far a nearby bus would be rerouted if it covered another
+route's gap, and whether it could still get back to its own schedule. It also lists the buses that
+finish their day at UBC Exchange (spare for one more trip before heading to the depot). For context it
+adds one shape per other bus route (drawn faintly), the SkyTrain lines and stations. Standard library only.
 
   python3 scripts/build_route_map.py --gtfs google_transit.zip --data app/data.json --out app/route_map.json
 """
@@ -104,15 +107,18 @@ def main():
         stops = {r["stop_id"]: r for r in read_zip_csv(archive, "stops.txt")}
         ubc_stops = {sid for sid, s in stops.items() if s["stop_name"].startswith("UBC Exchange")}
 
-        # For every planner departure: the time it leaves UBC Exchange, and its last stop and arrival.
-        leave, last = {}, {}
+        # For every trip running that day: where and when it starts and ends, and when the planner's
+        # departures leave UBC Exchange.
+        leave, first, last = {}, {}, {}
         for row in read_zip_csv(archive, "stop_times.txt"):
             tid = row["trip_id"]
-            if tid not in departure_trips:
+            if tid not in trips:
                 continue
             seq = int(row["stop_sequence"])
-            if row["stop_id"] in ubc_stops and (tid not in leave or seq < leave[tid][0]):
+            if tid in departure_trips and row["stop_id"] in ubc_stops and (tid not in leave or seq < leave[tid][0]):
                 leave[tid] = (seq, clock_minutes(row["departure_time"]))
+            if tid not in first or seq < first[tid][0]:
+                first[tid] = (seq, clock_minutes(row["departure_time"]), row["stop_id"])
             if tid not in last or seq > last[tid][0]:
                 last[tid] = (seq, clock_minutes(row["arrival_time"]), row["stop_id"])
 
@@ -138,6 +144,13 @@ def main():
             platforms[s["stop_name"].split(" Station")[0].replace("-", "–")].append((float(s["stop_lon"]), float(s["stop_lat"])))
     stations = {name: (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)) for name, pts in platforms.items()}
 
+    def place(stop_id):
+        stop = stops[stop_id]
+        x, y = float(stop["stop_lon"]), float(stop["stop_lat"])
+        near = min(stations, key=lambda n: length_km([[x, y], list(stations[n])]))
+        name = f"{near} Station" if length_km([[x, y], list(stations[near])]) < 0.45 else stop_label(stop["stop_name"])
+        return {"name": name, "lon": round(x, 5), "lat": round(y, 5)}
+
     # One entry per distinct departure shape: geometry, length and where it ends.
     shape_ids = sorted(set(trip_shapes.values()))
     index = {sid: i for i, sid in enumerate(shape_ids)}
@@ -148,19 +161,54 @@ def main():
     shapes_out = []
     for sid in shape_ids:
         route = departure_trips[next(t for t, s in trip_shapes.items() if s == sid)]
-        stop = stops[end_stop[sid].most_common(1)[0][0]]
-        x, y = float(stop["stop_lon"]), float(stop["stop_lat"])
-        near = min(stations, key=lambda n: length_km([[x, y], list(stations[n])]))
-        name = f"{near} Station" if length_km([[x, y], list(stations[near])]) < 0.45 else stop_label(stop["stop_name"])
+        end_id = end_stop[sid].most_common(1)[0][0]
+        end = place(end_id)
         headsign = Counter(trips[tid]["trip_headsign"] for tid, trip_shape in trip_shapes.items() if trip_shape == sid).most_common(1)[0][0]
         if "Dundarave" in headsign:
-            name = "Dundarave"
+            end["name"] = "Dundarave"
         elif route == "N17":
-            name = stop_label(stop["stop_name"])
-        shapes_out.append({"route": route, "lengthKm": round(length_km(shape[sid]), 1),
-                           "end": {"name": name, "lon": round(x, 5), "lat": round(y, 5)},
+            end["name"] = stop_label(stops[end_id]["stop_name"])
+        shapes_out.append({"route": route, "lengthKm": round(length_km(shape[sid]), 1), "end": end,
                            "coords": rounded(simplify(shape[sid], 0.00003), 5)})
-    trips_out = {tid: [index[sid], round(last[tid][1] - leave[tid][1])] for tid, sid in trip_shapes.items() if tid in leave and tid in last}
+    by_block = defaultdict(list)
+    for tid, t in trips.items():
+        if tid in first and t["block_id"]:
+            by_block[t["block_id"]].append((first[tid][1], tid))
+    for runs in by_block.values():
+        runs.sort()
+
+    # Buses whose day ends at UBC Exchange, on a planner route: [route, arrival minute, bay, lon, lat].
+    spare = []
+    for runs in by_block.values():
+        tid = runs[-1][1]
+        route = routes[trips[tid]["route_id"]]["route_short_name"].lstrip("0")
+        stop = stops[last[tid][2]]
+        if last[tid][2] in ubc_stops and route in planner["routes"]:
+            spare.append([route, round(last[tid][1]), stop["stop_name"].split(" @ ")[-1],
+                          round(float(stop["stop_lon"]), 6), round(float(stop["stop_lat"]), 6)])
+    spare.sort(key=lambda bus: (bus[1], bus[0]))
+    block_stops, stop_index = [], {}
+
+    def stop_ref(stop_id):
+        if stop_id not in stop_index:
+            stop_index[stop_id] = len(block_stops)
+            block_stops.append(place(stop_id))
+        return stop_index[stop_id]
+
+    trips_out = {}
+    for tid, sid in trip_shapes.items():
+        if tid not in leave or tid not in last:
+            continue
+        record = [index[sid], round(last[tid][1] - leave[tid][1])]
+        runs = by_block.get(trips[tid]["block_id"])
+        if runs:  # the bus's next trip, and its next departure from UBC Exchange (None: its day ends)
+            later = [t for start, t in runs if start > leave[tid][1]]
+            following = later[0] if later else None
+            next_ubc = next((t for t in later if first[t][2] in ubc_stops), None)
+            record += [round(first[following][1]) if following else None,
+                       stop_ref(first[following][2]) if following else None,
+                       round(first[next_ubc][1]) if next_ubc else None]
+        trips_out[tid] = record
 
     # Each route's usual departure pattern: its most common shape among the planner's departures.
     main_shape = {}
@@ -168,7 +216,7 @@ def main():
         counts = Counter(index[trip_shapes[t["tripId"]]] for t in planner["routes"][route]["departures"] if t["tripId"] in trip_shapes)
         main_shape[route] = counts.most_common(1)[0][0]
 
-    uses = Counter(shape_index for shape_index, _ in trips_out.values())
+    uses = Counter(record[0] for record in trips_out.values())
     everything = [p for i, s in enumerate(shapes_out) if uses[i] >= 5 for p in s["coords"]]  # rare variants may run off the map
     view = [min(p[0] for p in everything) - 0.01, min(p[1] for p in everything) - 0.01,
             max(p[0] for p in everything) + 0.01, max(p[1] for p in everything) + 0.01]
@@ -185,6 +233,8 @@ def main():
         "shapes": shapes_out,
         "mainShape": main_shape,
         "trips": trips_out,
+        "blockStops": block_stops,
+        "spareBuses": spare,
         "stations": [{"name": n, "lon": round(x, 5), "lat": round(y, 5)} for n, (x, y) in sorted(stations.items())
                      if box[0] <= x <= box[2] and box[1] <= y <= box[3]],
         "skytrain": [{"name": name, "coords": rounded(simplify(run, 0.00006), 5)}
@@ -194,7 +244,10 @@ def main():
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, separators=(",", ":"), ensure_ascii=False) + "\n", encoding="utf-8")
     usual = ", ".join(f"{r}: {shapes_out[main_shape[r]]['lengthKm']} km to {shapes_out[main_shape[r]]['end']['name']}" for r in planner["routes"])
-    print(f"{len(trips_out)}/{len(departure_trips)} departures mapped onto {len(shapes_out)} shapes ({args.out.stat().st_size // 1024} KB)\n{usual}")
+    with_block = sum(1 for r in trips_out.values() if len(r) == 5)
+    print(f"{len(trips_out)}/{len(departure_trips)} departures mapped onto {len(shapes_out)} shapes; "
+          f"{with_block} with their bus's next trip; {len(spare)} buses end their day at UBC "
+          f"({args.out.stat().st_size // 1024} KB)\n{usual}")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="app/styles.css" />
+    <script src="app/switching.js" defer></script>
     <script src="app/app.js" defer></script>
   </head>
   <body>
@@ -23,7 +24,7 @@
           <div>
             <p class="eyebrow">A simpler way to test a bus change</p>
             <h1 id="page-title">Where should the next <em>bus</em> go?</h1>
-            <p class="intro-copy">Pick a route to see its schedule and, where available, historical loads. For city routes, compare a nearby bus swap with an added trip.</p>
+            <p class="intro-copy">Pick a route to see its schedule and historical loads. Find which bus could practically fill a gap, and who gains or pays for it, or test an added trip.</p>
           </div>
           <div class="snapshot-card" aria-label="Data periods">
             <div class="snapshot-line"><span class="snapshot-dot history"></span><span>LOADS</span><strong>Fall 2025 weekdays</strong></div>
@@ -33,7 +34,7 @@
         </section>
 
         <nav class="route-nav" id="route-nav" aria-label="Choose a bus route"></nav>
-        <p class="route-nav-note">All 12 routes departing UBC Exchange in this sample timetable are shown. Route 68 is a campus shuttle; N17 has timetable and map data only.</p>
+        <p class="route-nav-note">The three crowded corridors we optimise. Buses from the other nine UBC Exchange routes are checked as replacements.</p>
 
         <div id="app-error" class="app-error" role="alert" hidden></div>
         <div id="app-content" hidden>
@@ -64,9 +65,9 @@
           <section class="panel candidates-panel" aria-labelledby="candidates-title">
             <div class="candidates-heading">
               <div>
-                <div class="section-topline"><span class="step">03</span><span id="candidates-step">TEST A SERVICE CHANGE</span></div>
+                <div class="section-topline"><span class="step">03</span><span id="candidates-step">FILL THE GAP</span></div>
                 <h2 id="candidates-title">How could we fill that gap?</h2>
-                <p id="candidates-description">Check nearby lower-load trips, or test an added departure on the same route.</p>
+                <p id="candidates-description">First, a bus from another route: finishing buses, then other routes' trips, checked for timing, bay, vehicle, both routes' loads and getting back to its own schedule. On crowded blocks, also an added trip on the same route.</p>
               </div>
               <span class="candidate-count" id="candidate-count"></span>
             </div>
@@ -90,6 +91,7 @@
               <div id="map-legend-routes" class="map-legend-routes"></div>
               <span class="donor-only"><i class="key-line is-donor"></i>Nearby bus: its usual route</span>
               <span class="donor-only"><i class="key-dot"></i>Nearby bus: rerouted trip</span>
+              <span class="donor-only"><i class="key-line is-empty"></i>Its empty run back</span>
               <span><i class="key-line is-rail"></i>SkyTrain</span>
               <span><i class="key-line is-network"></i>Other bus routes</span>
             </div>

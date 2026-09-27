@@ -1,14 +1,17 @@
 const state = {
   data: null,
-  route: "33",
+  route: "99",
   block: 15,
-  hour: 15 * 60,
+  hour: 17 * 60,
   tripId: null,
   candidateId: null,
   swap: null,
   map: null,
 };
-const MAX_FILLABLE_GAP = 60;
+// The three crowded corridors this planner optimises. The other UBC Exchange routes stay in the data, as
+// buses that could fill their gaps.
+const FOCUS_ROUTES = ["99", "R4", "49"];
+const MAX_FILLABLE_GAP = Switching.RULES.maxGapMinutes;  // longer gaps are scheduled service breaks
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,63 +43,20 @@ function pressureStatus(percent) {
   return { label: "Moderate", short: "moderate", high: false };
 }
 
-function distanceMetres(a, b) {
-  const rad = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * rad;
-  const dLon = (b.lon - a.lon) * rad;
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
-  return Math.round(6371000 * 2 * Math.asin(Math.sqrt(x)));
-}
-
 function selectedGap() {
   const index = departures().findIndex((trip) => trip.tripId === state.tripId);
   if (index < 0 || index >= departures().length - 1) return null;
   return { first: departures()[index], next: departures()[index + 1] };
 }
 
-function candidatesForGap(gap, targetId = state.route, code = state.block) {
-  if (!gap || route(targetId).serviceType !== "regular") return [];
-  const result = [];
-  const before = gap.next.minute - gap.first.minute;
-  if (before > MAX_FILLABLE_GAP) return result;
-  for (const [donorId, donor] of Object.entries(state.data.routes)) {
-    if (donorId === targetId || donor.serviceType !== "regular") continue;
-    const historical = donor.blocks[String(code)];
-    if (!historical || historical.loadPercent >= 60) continue;
-    for (let i = 1; i < donor.departures.length - 1; i++) {
-      const trip = donor.departures[i];
-      if (trip.minute <= gap.first.minute || trip.minute >= gap.next.minute) continue;
-      const distance = distanceMetres(gap.first, trip);
-      if (distance > 250) continue;
-      const donorBefore = Math.max(trip.minute - donor.departures[i - 1].minute,
-        donor.departures[i + 1].minute - trip.minute);
-      const donorAfter = donor.departures[i + 1].minute - donor.departures[i - 1].minute;
-      const targetAfter = Math.max(trip.minute - gap.first.minute, gap.next.minute - trip.minute);
-      result.push({
-        id: `${donorId}:${trip.tripId}`,
-        donorId,
-        trip,
-        distance,
-        historical,
-        targetBefore: before,
-        targetAfter,
-        benefit: before - targetAfter,
-        donorBefore,
-        donorAfter,
-        donorPenalty: donorAfter - donorBefore,
-      });
-    }
-  }
-  result.sort((a, b) => (b.benefit - b.donorPenalty) - (a.benefit - a.donorPenalty) || b.benefit - a.benefit || a.distance - b.distance);
-  const distinctRoutes = new Set();
-  return result.filter((candidate) => {
-    if (distinctRoutes.has(candidate.donorId)) return false;
-    distinctRoutes.add(candidate.donorId);
-    return true;
-  }).slice(0, 3);
+// Which bus could fill a gap, and whether it's practical, is decided in switching.js.
+function switchesFor(gap, targetId = state.route) {
+  return Switching.switchesForGap({ data: state.data, map: state.map }, gap, targetId);
 }
 
+/** The gap in a time block (optionally one hour) with the strongest practical switch. */
 function bestCandidateGap(routeId, code, restrictHour = null) {
+  if (route(routeId).serviceType !== "regular") return null;
   const trips = departures(routeId);
   const period = block(code);
   let best = null;
@@ -104,10 +64,10 @@ function bestCandidateGap(routeId, code, restrictHour = null) {
     const first = trips[i];
     if (first.minute < period.start || first.minute >= period.end) continue;
     if (restrictHour !== null && (first.minute < restrictHour || first.minute >= restrictHour + 60)) continue;
-    const options = candidatesForGap({ first, next: trips[i + 1] }, routeId, code);
-    if (!options.length) continue;
-    const candidate = options[0];
-    const score = (candidate.benefit - candidate.donorPenalty) * 100 + candidate.benefit;
+    if (trips[i + 1].minute - first.minute > MAX_FILLABLE_GAP) continue;
+    const top = switchesFor({ first, next: trips[i + 1] }, routeId).options[0];
+    if (!top) continue;
+    const score = (top.verdict === "recommended" ? 1e6 : 0) + top.net;
     if (!best || score > best.score) best = { tripId: first.tripId, hour: Math.floor(first.minute / 60) * 60, score };
   }
   return best;
@@ -168,7 +128,7 @@ function selectHour(hour) {
 }
 
 function renderRoutes() {
-  $("route-nav").innerHTML = state.data.targetRoutes.map((id) => {
+  $("route-nav").innerHTML = FOCUS_ROUTES.filter((id) => state.data.routes[id]).map((id) => {
     const info = route(id);
     const peak = Object.values(info.blocks).length ? Math.max(...Object.values(info.blocks).map((value) => value.loadPercent)) : null;
     const detail = info.serviceType === "nightbus" ? "NightBus · schedule only"
@@ -232,6 +192,113 @@ function renderSchedule() {
     : `<div><span class="gap-label">Select a departure</span><strong>See its next scheduled bus</strong></div>`;
 }
 
+const VERDICTS = { recommended: "Recommended", workable: "Workable, with care" };
+const REJECTED_AS = {
+  bunch: "would leave too close to a scheduled bus", trolley: "are electric trolleys", crowd: "would leave their own route more crowded",
+  late: "couldn't get back for their next trip", timing: "reach UBC at the wrong time", net: "would cost their riders more than they save",
+  bay: "leave from a far bay", service: "are a campus shuttle or NightBus", duplicate: "are a second bus from a route already offered", edge: "are the first or last trip of their route", data: "have no load data",
+};
+
+const pct = (value) => `${Math.round(value)}%`;
+const wait = (value) => `${value < 10 ? value.toFixed(1).replace(/\.0$/, "") : Math.round(value)} min`;
+const about = (value) => Math.max(1, Math.round(value));
+
+function switchWhen(option) {
+  return option.kind === "spare"
+    ? `Finishing its day · in ${timeLabel(option.arrival)} · leaves ${timeLabel(option.departure)}`
+    : `Scheduled ${timeLabel(option.departure)} · ${option.trip.bay}`;
+}
+
+/** One line on what happens to the bus afterwards. */
+function planShort(option) {
+  const plan = option.plan;
+  if (option.kind === "spare") return plan.extraMinutes ? `+${plan.extraMinutes} min of driver time, then to the depot` : "then to the depot";
+  return { rejoin: `back for its next trip, ${Math.floor(plan.slack)} min to spare`, ubc: "skips one more trip to get back",
+    ends: "its last trip of the day", unknown: "its own schedule wasn't checked" }[plan.kind] || "";
+}
+
+function planDetail(option) {
+  const plan = option.plan;
+  const km = (value) => `~${value.toFixed(1)} km`;
+  if (option.kind === "spare") {
+    return plan.extraMinutes
+      ? { head: `+${plan.extraMinutes} min`, text: `of driver and bus time: waits ${plan.wait} min at UBC, runs the ~${plan.run}-min trip, then heads to the depot from ${plan.end.name}. Needs a driver willing to do one more trip.` }
+      : { head: "One more trip", text: "Then it heads to the depot." };
+  }
+  if (plan.kind === "rejoin") return { head: `${Math.floor(plan.slack)} min to spare`, text: `After the trip it runs empty ${km(plan.emptyKm)} (~${Math.round(plan.emptyMinutes)} min) from ${plan.end.name} to ${plan.at.name}, in time for its ${timeLabel(plan.nextDeparture)} trip with ${Switching.RULES.recoveryMinutes} min recovery.` };
+  if (plan.kind === "ubc") return { head: "Skips 1 more trip", text: `It can't make its ${timeLabel(plan.skipped.departure)} trip from ${plan.skipped.from.name}, so it runs empty ${km(plan.emptyKm)} back to UBC for its ${timeLabel(plan.nextDeparture)} departure (${Math.floor(plan.slack)} min to spare).` };
+  if (plan.kind === "ends") return { head: "Last trip of its day", text: `It heads to the depot from ${plan.end.name} instead of ${plan.at.name} (${plan.apartKm.toFixed(1)} km apart).` };
+  return { head: "Not checked", text: "This bus's own schedule isn't in the data." };
+}
+
+function switchCard(option, gap) {
+  const r = rerouteFor(gap, option);
+  const teaser = option.kind === "spare" ? `↪ one more trip · ${planShort(option)}`
+    : `↪ ${r ? `${r.offKm.toFixed(1)} km off its route · ` : ""}${planShort(option)}`;
+  return `<button class="candidate is-${option.verdict}" type="button" data-candidate="${escapeHtml(option.id)}" aria-pressed="${option.id === state.candidateId}">
+    <span class="candidate-top"><span class="candidate-route">${escapeHtml(option.donorId)}</span>
+      <span><span class="candidate-name">${option.kind === "spare" ? "Finishing bus" : "Borrowed trip"} · ${escapeHtml(route(option.donorId).name)}</span><span class="candidate-time">${switchWhen(option)}</span></span>
+      <span class="verdict-badge is-${option.verdict}">${VERDICTS[option.verdict]}</span></span>
+    <span class="candidate-divider"></span>
+    <span class="candidate-facts"><span>≈${Math.round(option.net)} rider-min saved</span><span>${option.kind === "spare" ? "no trip lost" : `${option.distance} m away`}</span></span>
+    <span class="candidate-reroute">${escapeHtml(teaser)}</span>
+  </button>`;
+}
+
+/** Things to confirm before acting that don't change the verdict: route knowledge and whether the block is crowded. */
+function switchChecks(option) {
+  const checks = [];
+  const r = rerouteFor(selectedGap(), option);
+  if (r && r.offKm / r.totalKm > 1 / 3) checks.push(`Route knowledge: ${r.offKm.toFixed(1)} of ${r.totalKm.toFixed(1)} km is off its usual route, so check the driver knows the ${state.route}.`);
+  const load = measure()?.loadPercent;
+  if (load !== undefined && load < 84) checks.push(`This time block averages ${Math.round(load)}% load, under the 84% crowding line, so the gain is mostly shorter waits.`);
+  return checks;
+}
+
+function switchDetail(option) {
+  const target = state.route, donorId = option.donorId, T = option.target, D = option.donor;
+  const ops = planDetail(option);
+  const donorColumn = D
+    ? `<strong>${pct(D.nextLoadBefore)} → <span>${pct(D.nextLoadAfter)}</span></strong><small>full: the next ${escapeHtml(donorId)} (${timeLabel(D.nextBus.minute)}) takes this trip's riders</small>
+      <ul><li>~${about(D.riders)} riders wait ${wait(D.waitBefore)} → ${wait(D.waitAfter)} on average</li>
+        ${D.leftBehind >= 0.5 ? `<li>~${about(D.leftBehind)} may be left behind</li>` : ""}
+        ${option.plan.kind === "ubc" ? `<li>Its ${timeLabel(option.plan.skipped.departure)} trip from ${escapeHtml(option.plan.skipped.from.name)} is skipped too</li>` : ""}</ul>`
+    : `<strong>No one</strong><small>This bus had finished its day at UBC Exchange, so no scheduled trip is cancelled.</small>`;
+  return `<div class="switch-detail" aria-live="polite">
+    <div class="switch-col"><span class="metric-label">FOR ${escapeHtml(target)} RIDERS</span>
+      <strong>${pct(T.nextLoadBefore)} → <span>${pct(T.nextLoadAfter)}</span></strong><small>full: the next ${escapeHtml(target)} (${timeLabel(T.nextBus.minute)})</small>
+      <ul><li>~${about(T.riders)} riders in the ${T.gap}-min gap wait ${wait(T.waitBefore)} → ${wait(T.waitAfter)} on average</li>
+        <li>The extra bus leaves ${timeLabel(option.departure)}, about ${pct(T.extraBusLoad)} full</li>
+        ${T.leftBehindRelief >= 0.5 ? `<li>~${about(T.leftBehindRelief)} fewer riders left at the stop</li>` : ""}</ul></div>
+    <div class="switch-col is-cost"><span class="metric-label">${D ? `FOR ${escapeHtml(donorId)} RIDERS` : "WHO LOSES A TRIP"}</span>${donorColumn}</div>
+    <div class="switch-col is-ops"><span class="metric-label">FOR OPERATIONS</span><strong>${escapeHtml(ops.head)}</strong><small>${escapeHtml(ops.text)}</small></div>
+    <div class="switch-summary"><span class="verdict-badge is-${option.verdict}">${VERDICTS[option.verdict]}</span>
+      <p>Overall, riders wait about <strong>${Math.round(option.net).toLocaleString("en-CA")} fewer minutes</strong> in total${D ? ` (${escapeHtml(target)} riders save ${Math.round(T.waitSaved + T.leftBehindSaved).toLocaleString("en-CA")}, ${escapeHtml(donorId)} riders lose ${Math.round(D.cost).toLocaleString("en-CA")})` : ""}.
+        ${option.warnings.map((text) => `<span class="switch-caution">${escapeHtml(text)}</span>`).join("")}
+        ${switchChecks(option).map((text) => `<span class="switch-check">${escapeHtml(text)}</span>`).join("")}</p></div>
+  </div>`;
+}
+
+function rejectedList(result) {
+  if (!result.rejected.length) return "";
+  return `<details class="switch-more"><summary>Why not the other ${result.rejected.length} ${result.rejected.length === 1 ? "bus" : "buses"}?</summary>
+    <ul class="rejected-list">${result.rejected.map((o) => `<li><span class="mini-chip">${escapeHtml(o.donorId)}</span>
+      <span class="rejected-time">${o.kind === "spare" ? `in ${timeLabel(o.arrival)}` : timeLabel(o.departure)}</span>
+      <span>${o.reasons.map(escapeHtml).join("<br />")}</span></li>`).join("")}</ul></details>`;
+}
+
+function methodNote() {
+  const R = Switching.RULES;
+  return `<details class="switch-more"><summary>How switches are chosen</summary><ol class="method-list">
+    <li><strong>Finishing buses first.</strong> A bus from another route ending its day at UBC runs one more trip, so nobody loses a trip. Otherwise another route's trip leaving inside the gap is borrowed. The ${escapeHtml(state.route)}'s own buses are never offered, and each route appears at most once.</li>
+    <li><strong>Timing.</strong> It leaves at least ${R.minSplitMinutes} min from either scheduled bus, or it just bunches. A finishing bus leaves mid-gap after ${R.recoveryMinutes} min recovery, waiting at most ${R.maxSpareWaitMinutes} min.</li>
+    <li><strong>Bay and vehicle.</strong> Borrowed bays within ${R.maxBayMetres} m. Electric trolleys (${R.trolleyRoutes.join(", ")}) only cover other trolley routes: they need overhead wire.</li>
+    <li><strong>Its own riders.</strong> The next bus on its route must end up less full than the bus it relieves.</li>
+    <li><strong>Its schedule.</strong> An empty run (${R.roadFactor} × straight line, ${R.emptyRunKmh.peak} km/h in peaks, ${R.emptyRunKmh.offPeak} otherwise) plus ${R.recoveryMinutes} min recovery must reach its next trip; failing that it returns to UBC and skips one.</li>
+    <li><strong>Net benefit.</strong> Waiting saved minus waiting added, in rider-minutes, counting riders left behind by a full bus. Riders per minute come from the 2025 route average.</li>
+  </ol><p class="method-note">Not checked: driver shifts and route knowledge, depot locations, today's real loads.</p></details>`;
+}
+
 function extraTripPlan(gap) {
   const historical = measure();
   if (!gap || route().serviceType !== "regular" || !historical || historical.loadPercent < 84) return null;
@@ -274,11 +341,11 @@ function extraTripMarkup(gap, plan) {
 function renderCandidates() {
   const gap = selectedGap();
   const special = route().serviceType !== "regular";
-  $("candidates-step").textContent = special ? "ROUTE CONTEXT" : "TEST A SERVICE CHANGE";
+  $("candidates-step").textContent = special ? "ROUTE CONTEXT" : "FILL THE GAP";
   $("candidates-title").textContent = special ? "How can we use this route?" : "How could we fill that gap?";
   $("candidates-description").textContent = special
     ? "Its published timetable and path are available. Bus-swap suggestions are limited to comparable city routes with historical load data."
-    : "Check nearby lower-load trips, or test an added departure on the same route. A swap must start within 250 m and pass the route-fit screen.";
+    : "First, a bus from another route: finishing buses, then other routes' trips, checked for timing, bay, vehicle, both routes' loads and getting back to its own schedule. On crowded blocks, also an added trip on the same route.";
   if (special) {
     state.candidateId = null;
     state.swap = null;
@@ -291,52 +358,41 @@ function renderCandidates() {
     renderMap();
     return;
   }
-  const candidates = candidatesForGap(gap);
+  const serviceBreak = gap && gap.next.minute - gap.first.minute > MAX_FILLABLE_GAP;
+  const result = serviceBreak ? { options: [], rejected: [], checked: 0 } : switchesFor(gap);
+  const options = result.options.slice(0, 3);
   const extra = extraTripPlan(gap);
-  $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "SWAP" : "SWAPS"}${extra ? " · 1 ADD-TRIP PLAN" : ""}`;
-  if (!candidates.length) {
+  $("candidate-count").textContent = `${options.length} ${options.length === 1 ? "OPTION" : "OPTIONS"} · ${result.checked} CHECKED${extra ? " · 1 ADD-TRIP PLAN" : ""}`;
+  if (!options.length) {
     state.candidateId = null;
     state.swap = null;
-    const lowerLoadRoutes = Object.entries(state.data.routes).filter(([id, info]) => id !== state.route && info.serviceType === "regular" && info.blocks[String(state.block)]?.loadPercent < 60).length;
-    const serviceBreak = gap && gap.next.minute - gap.first.minute > MAX_FILLABLE_GAP;
+    const counts = {};
+    for (const o of result.rejected) counts[o.codes[0]] = (counts[o.codes[0]] || 0) + 1;
+    const why = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([code, n]) => `${n} ${REJECTED_AS[code]}`).join(", ");
     const explanation = !gap ? "Choose a scheduled departure above to inspect its following gap."
       : serviceBreak ? "This is a scheduled service break, not a continuous-service gap. It is excluded from bus-swap suggestions."
-        : lowerLoadRoutes === 0 ? "Every other eligible route has a 2025 average peak load factor at or above 60% in this block. Moving service would be hard to justify from these data."
-        : "Lower-load routes exist, but no scheduled trip from a bay within 250 m falls inside this exact gap. Try another departure.";
+        : result.checked ? `${result.checked} ${result.checked === 1 ? "bus was" : "buses were"} checked: ${why}.`
+          : "No bus leaves or finishes its day at UBC Exchange inside this gap.";
     const another = bestCandidateGap(state.route, state.block);
-    const later = state.block !== 18 && measure(state.route, 18) ? bestCandidateGap(state.route, 18) : null;
-    const action = extra ? "" : another ? `<button class="try-button" type="button" id="try-option">Find a possible swap →</button>`
-      : later ? `<button class="try-button" type="button" id="try-later">Try 18–21 →</button>` : "";
-    $("candidates-content").innerHTML = `<div class="no-candidates"><span class="no-candidates-icon" aria-hidden="true">∅</span><div><strong>${serviceBreak ? "Scheduled service break" : "No suitable nearby trip for this gap"}</strong><p>${explanation}</p></div>${action}</div>${extraTripMarkup(gap, extra)}`;
-    $("try-option")?.addEventListener("click", () => { state.hour = another.hour; state.tripId = another.tripId; render(); });
-    $("try-later")?.addEventListener("click", () => selectBlock(18));
+    const elsewhere = another ? null : state.data.timeBlocks.filter((b) => b.code !== state.block && measure(state.route, b.code))
+      .map((b) => ({ block: b, best: bestCandidateGap(state.route, b.code) })).filter((x) => x.best)
+      .sort((a, b) => b.best.score - a.best.score)[0];
+    const action = extra ? "" : another ? `<button class="try-button" type="button" id="try-option">Find a gap with a switch →</button>`
+      : elsewhere ? `<button class="try-button" type="button" id="try-later">Try ${elsewhere.block.label} →</button>` : "";
+    const none = gap && !serviceBreak && !another ? " No gap in this time block has one either: every route is busy and no bus finishes at UBC then." : "";
+    $("candidates-content").innerHTML = `<div class="no-candidates"><span class="no-candidates-icon" aria-hidden="true">∅</span><div><strong>${serviceBreak ? "Scheduled service break" : "No practical switch for this gap"}</strong><p>${escapeHtml(explanation)}${none}</p></div>${action}</div>
+      ${extraTripMarkup(gap, extra)}${serviceBreak ? "" : `<div class="switch-extras">${rejectedList(result)}${methodNote()}</div>`}`;
+    $("try-option")?.addEventListener("click", () => { state.hour = another.hour; state.tripId = another.tripId; state.candidateId = null; render(); });
+    $("try-later")?.addEventListener("click", () => selectBlock(elsewhere.block.code));
     renderMap();
     return;
   }
-  if (!candidates.some((candidate) => candidate.id === state.candidateId)) state.candidateId = candidates[0].id;
-  const selected = candidates.find((candidate) => candidate.id === state.candidateId);
+  if (!options.some((option) => option.id === state.candidateId)) state.candidateId = options[0].id;
+  const selected = options.find((option) => option.id === state.candidateId);
   state.swap = selected;
-  const reroute = rerouteFor(gap, selected);
-  const corridorFit = reroute && reroute.offKm / reroute.totalKm <= 1 / 3 && reroute.endGapKm <= 5;
-  const scheduleFit = selected.benefit >= selected.donorPenalty;
-  const pressureFit = measure().loadPercent >= 84;
-  const verdict = !reroute ? "Route fit unavailable" : !corridorFit ? "Poor route fit" : !scheduleFit ? "Poor schedule tradeoff"
-    : !pressureFit ? "No high-load signal" : "Needs operations check";
-  const explanation = !reroute ? "The trip geometry is unavailable."
-    : !corridorFit ? "The bus would leave much of its usual route or finish too far from its usual end."
-      : !scheduleFit ? "The donor gap grows more than the target gap shrinks."
-        : !pressureFit ? "This route and time block is below the app's 84% historical crowding threshold."
-        : "The schedule and path pass this first screen.";
-  $("candidates-content").innerHTML = `<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
-    <span class="candidate-top"><span class="candidate-route">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">${escapeHtml(route(candidate.donorId).name)}</span><span class="candidate-time">${timeLabel(candidate.trip.minute)} · ${escapeHtml(candidate.trip.bay)}</span></span></span>
-    <span class="candidate-divider"></span><span class="candidate-facts"><span>${Math.round(candidate.historical.loadPercent)}% historical load</span><span>${candidate.distance} m away</span></span>
-    ${(() => { const r = rerouteFor(gap, candidate); return r ? `<span class="candidate-reroute">↪ ${r.offKm.toFixed(1)} km off its route · ends ${r.endGapKm.toFixed(1)} km from its usual end</span>` : ""; })()}
-  </button>`).join("")}</div>
-  <div class="swap-detail" aria-live="polite">
-    <div><span class="metric-label">TARGET GAP IF MOVED</span><strong>${selected.targetBefore} → <span>${selected.targetAfter} min</span></strong></div>
-    <div class="penalty"><span class="metric-label">DONOR GAP IF REMOVED</span><strong>${selected.donorBefore} → <span>${selected.donorAfter} min</span></strong></div>
-    <p><span class="swap-verdict ${corridorFit && scheduleFit && pressureFit ? "is-favorable" : ""}">${verdict}</span><br />${explanation} This is a timetable scenario, not an available bus. Check actual loads, vehicle type, driver block and recovery time.</p>
-  </div>${extraTripMarkup(gap, extra)}`;
+  $("candidates-content").innerHTML = `<div class="candidate-grid">${options.map((option) => switchCard(option, gap)).join("")}</div>
+    ${switchDetail(selected)}${extraTripMarkup(gap, extra)}
+    <div class="switch-extras">${rejectedList(result)}${methodNote()}</div>`;
   $("candidates-content").querySelectorAll("[data-candidate]").forEach((button) => button.addEventListener("click", () => { state.candidateId = button.dataset.candidate; renderCandidates(); }));
   renderMap();
 }
@@ -414,8 +470,9 @@ function distanceToLine([px, py], line) {
 function rerouteFor(gap, candidate) {
   const map = state.map;
   const covered = gap && map?.trips[gap.first.tripId];
-  const usual = candidate && map?.trips[candidate.trip.tripId];
-  if (!covered || !usual) return null;
+  const usual = candidate?.kind === "spare" ? [map?.mainShape[candidate.donorId], typicalRun(candidate.donorId)]
+    : candidate && map?.trips[candidate.trip.tripId];
+  if (!covered || !usual || usual[0] === undefined) return null;
   const path = map.shapes[covered[0]], own = map.shapes[usual[0]];
   const ownLine = own.coords.map(toKm);
   const points = densify(path.coords);
@@ -431,7 +488,7 @@ function rerouteFor(gap, candidate) {
 }
 
 function typicalRun(routeId) {
-  const runs = departures(routeId).map((trip) => state.map.trips[trip.tripId]?.[1]).filter(Number.isFinite).sort((a, b) => a - b);
+  const runs = departures(routeId).map((trip) => state.map?.trips[trip.tripId]?.[1]).filter(Number.isFinite).sort((a, b) => a - b);
   return runs.length ? runs[Math.floor(runs.length / 2)] : null;
 }
 
@@ -455,6 +512,14 @@ function pointAlong(points, t) {
 }
 
 /** Frame the map on the routes in play, so they fill the panel. */
+/** Text anchor for a map label at x: the preferred side, unless the label would run off the map. */
+function labelSide(x, text, prefer) {
+  const width = text.length * 6.8 + 14;
+  if (prefer === "start" && x + width > MAP.width - 8) return "end";
+  if (prefer === "end" && x - width < 8) return "start";
+  return prefer;
+}
+
 function frameFor(shapes) {
   const pts = shapes.flatMap((shape) => shape.coords);
   const box = [Math.min(...pts.map((pt) => pt[0])) - 0.009, Math.min(...pts.map((pt) => pt[1])) - 0.006,
@@ -464,18 +529,22 @@ function frameFor(shapes) {
   return { box, height: Math.round(Math.min(MAP.maxHeight, Math.max(MAP.minHeight, height))) };
 }
 
+function switchStart(swap) { return swap.kind === "spare" ? swap.bay : swap.trip; }
+
 function bayInset(gap, swap) {
   const bays = new Map();
   for (const info of Object.values(state.data.routes)) for (const trip of info.departures) bays.set(trip.bay, trip);
   const all = [...bays.values()];
+  const start = bays.get(switchStart(swap).bay) || switchStart(swap);
+  if (!all.includes(start)) all.push(start);
   const box = [Math.min(...all.map((b) => b.lon)), Math.min(...all.map((b) => b.lat)), Math.max(...all.map((b) => b.lon)), Math.max(...all.map((b) => b.lat))];
   const p = mapProjector(box, { x: 0, y: 8, width: INSET.width, height: INSET.height - 8, pad: 22 });
-  const target = bays.get(gap.first.bay), donor = bays.get(swap.trip.bay);
+  const target = bays.get(gap.first.bay), donor = start;
   const dot = (b) => {
     const [x, y] = p.xy([b.lon, b.lat]);
     const role = b === target ? "is-target" : b === donor ? "is-donor" : "";
     return `<g class="bay ${role}"${role === "is-target" ? ` style="--route-line:${routeColor(state.route)}"` : ""}><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${role ? 7 : 4}" />
-      ${role ? `<text x="${(x + (role === "is-donor" ? -10 : 10)).toFixed(1)}" y="${(y - 11).toFixed(1)}" text-anchor="${role === "is-donor" ? "end" : "start"}">${escapeHtml(b.bay)}</text>` : ""}</g>`;
+      ${role ? `<text x="${(x + (role === "is-donor" ? -10 : 10)).toFixed(1)}" y="${(y - 11).toFixed(1)}" text-anchor="${role === "is-donor" ? "end" : "start"}">${escapeHtml(b.bay.replace("Unloading Only", "Unloading"))}</text>` : ""}</g>`;
   };
   const [x1, y1] = p.xy([donor.lon, donor.lat]), [x2, y2] = p.xy([target.lon, target.lat]);
   return `<svg class="bay-inset" viewBox="0 0 ${INSET.width} ${INSET.height}" role="img" aria-label="UBC Exchange: the bus moves from ${escapeHtml(donor.bay)} to ${escapeHtml(target.bay)}, ${swap.distance} metres.">
@@ -502,29 +571,30 @@ function renderRerouteSummary(gap, swap, reroute) {
       <div class="reroute-card"><span class="reroute-eyebrow">PLANNING NOTE</span><p class="reroute-note">${reason}</p></div>`;
     return;
   }
-  const target = state.route, donorId = swap.donorId;
+  const target = state.route, donorId = swap.donorId, spare = swap.kind === "spare";
   const minutesDiff = reroute.pathRun - reroute.ownRun;
   const offShare = reroute.totalKm ? reroute.offKm / reroute.totalKm * 100 : 0;
+  const then = planDetail(swap);
   $("reroute").innerHTML = `<div class="reroute-card">
       <span class="reroute-eyebrow">WHICH BUS IS REROUTED</span>
       <div class="reroute-pair"><span class="chip is-donor">${escapeHtml(donorId)}</span>
-        <span><strong>${escapeHtml(route(donorId).name)}</strong><small>scheduled ${timeLabel(swap.trip.minute)} from ${escapeHtml(swap.trip.bay)}</small></span></div>
-      <div class="reroute-arrow">would instead run ↓</div>
+        <span><strong>${escapeHtml(route(donorId).name)}</strong><small>${spare ? `finished its day at UBC, in ${timeLabel(swap.arrival)}` : `scheduled ${timeLabel(swap.departure)} from ${escapeHtml(swap.trip.bay)}`}</small></span></div>
+      <div class="reroute-arrow">${spare ? "runs one more trip ↓" : "would instead run ↓"}</div>
       <div class="reroute-pair"><span class="chip" style="--route-color:${routeColor(target)}">${escapeHtml(target)}</span>
-        <span><strong>${escapeHtml(route(target).name)}</strong><small>from ${escapeHtml(gap.first.bay)}</small></span></div>
+        <span><strong>${escapeHtml(route(target).name)}</strong><small>leaves ${timeLabel(swap.departure)} from ${escapeHtml(gap.first.bay)}</small></span></div>
     </div>
-    <div class="reroute-card"><span class="reroute-eyebrow">MOVES BAYS AT UBC EXCHANGE</span>${bayInset(gap, swap)}</div>
+    <div class="reroute-card"><span class="reroute-eyebrow">MOVES AT UBC EXCHANGE</span>${bayInset(gap, swap)}</div>
     <div class="reroute-card"><dl class="reroute-facts">
       <div><dt>Off its usual path</dt><dd><strong>${reroute.offKm.toFixed(1)} km</strong> of ${reroute.totalKm.toFixed(1)} km
         <span class="reroute-bar" aria-hidden="true"><i style="width:${offShare.toFixed(0)}%"></i></span>
         <small>${reroute.sharedKm < 0.1 ? "No shared street with its usual route" : `${reroute.sharedKm.toFixed(1)} km on streets it normally uses`}</small></dd></div>
-      <div><dt>Trip time</dt><dd><strong>~${reroute.pathRun} min</strong> <small class="inline">vs ${reroute.ownRun} min on its own route (${minutesDiff > 0 ? "+" : minutesDiff < 0 ? "−" : "±"}${Math.abs(minutesDiff)})</small></dd></div>
+      <div><dt>Trip time</dt><dd><strong>~${reroute.pathRun} min</strong> <small class="inline">${spare || !reroute.ownRun ? "in service" : `vs ${reroute.ownRun} min on its own route (${minutesDiff > 0 ? "+" : minutesDiff < 0 ? "−" : "±"}${Math.abs(minutesDiff)})`}</small></dd></div>
     </dl></div>
     <div class="reroute-card"><dl class="reroute-facts">
       <div><dt>Finishes at</dt><dd><strong>${escapeHtml(reroute.path.end.name)}</strong>
         <small>${reroute.endGapKm.toFixed(1)} km (straight line) from its usual end, ${escapeHtml(reroute.own.end.name)}</small></dd></div>
-    </dl>
-    <p class="reroute-note">In short: the ${escapeHtml(donorId)} bus leaves its route for ${reroute.offKm.toFixed(1)} km and finishes ${reroute.endGapKm.toFixed(1)} km from where it normally ends. It then needs an empty run back, or a return ${escapeHtml(target)} trip, to rejoin its own schedule.</p></div>`;
+      <div><dt>Then</dt><dd><strong>${escapeHtml(then.head)}</strong><small>${escapeHtml(then.text)}</small></dd></div>
+    </dl></div>`;
 }
 
 function renderMap() {
@@ -536,12 +606,13 @@ function renderMap() {
   const extra = reroute ? null : extraTripPlan(gap);
   const covered = gap && map.trips[gap.first.tripId] ? map.shapes[map.trips[gap.first.tripId][0]] : null;
   const shapeFor = (id) => (id === state.route && covered ? covered : map.shapes[map.mainShape[id]]);
-  const frame = frameFor([shapeFor(state.route), ...(reroute ? [reroute.own] : [])]);
+  const rejoinAt = reroute && swap.plan?.emptyKm !== undefined ? swap.plan.at : null;  // where the empty run back ends
+  const frame = frameFor([shapeFor(state.route), ...(reroute ? [reroute.own] : []), ...(rejoinAt ? [{ coords: [[rejoinAt.lon, rejoinAt.lat]] }] : [])]);
   const p = mapProjector(frame.box, { x: 0, y: 0, width: MAP.width, height: frame.height, pad: MAP.pad });
 
   const network = map.network.map((line) => svgPath(line.map(p.xy))).join("");
   const rail = map.skytrain.map((line) => `<path class="map-rail" d="${svgPath(line.coords.map(p.xy))}" />`).join("");
-  const order = [...map.targetRoutes.filter((id) => id !== state.route), state.route];  // selected route drawn last, on top
+  const order = [...FOCUS_ROUTES.filter((id) => id !== state.route && map.mainShape[id] !== undefined), state.route];  // selected route drawn last, on top
   const lines = {};
   const routes = order.map((id) => {
     const points = lines[id] = offsetPoints(shapeFor(id).coords.map(p.xy), MAP_OFFSET[id] || 0);
@@ -560,15 +631,30 @@ function renderMap() {
     const [ex, ey] = p.xy([reroute.path.end.lon, reroute.path.end.lat]);
     const [ox, oy] = p.xy([reroute.own.end.lon, reroute.own.end.lat]);
     const [dcx, dcy] = pointAlong(own, 0.45);
-    const close = Math.hypot(ex - ox, ey - oy) < 90;
-    // Keep the "usual end" label on the far side from where the rerouted bus ends.
-    const usualLeft = ox < ex;
-    overlay = `<path class="map-donor-casing" d="${ownD}" /><path class="map-donor" d="${ownD}" />
-      <line class="map-end-gap" x1="${ex.toFixed(1)}" y1="${ey.toFixed(1)}" x2="${ox.toFixed(1)}" y2="${oy.toFixed(1)}" />
+    // The dotted line is what the bus does next: an empty run to its next trip (or back to UBC), or, when
+    // its day ends there, just how far it finishes from its usual end. A finishing bus goes to the depot.
+    const [tx, ty] = rejoinAt ? p.xy([rejoinAt.lon, rejoinAt.lat]) : [ox, oy];
+    const close = Math.hypot(ex - tx, ey - ty) < 90;
+    const merged = rejoinAt && swap.plan.kind === "rejoin" && Math.hypot(tx - ox, ty - oy) < 40;
+    const usualLeft = ox < ex;  // keep the "usual end" label on the far side from where the rerouted bus ends
+    const nextTrip = swap.plan.kind === "rejoin" ? `next trip ${timeLabel(swap.plan.nextDeparture)}` : "";
+    const link = rejoinAt
+      ? `<line class="map-empty-run" x1="${ex.toFixed(1)}" y1="${ey.toFixed(1)}" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" />
+        <text class="map-gap-label" x="${(close ? ex : (ex + tx) / 2).toFixed(1)}" y="${(close ? ey + 30 : (ey + ty) / 2 + 22).toFixed(1)}" text-anchor="middle">${swap.plan.kind === "ubc" ? "Empty back to UBC" : "Empty run"} ~${swap.plan.emptyKm.toFixed(1)} km</text>`
+      : swap.kind === "spare" ? ""
+        : `<line class="map-end-gap" x1="${ex.toFixed(1)}" y1="${ey.toFixed(1)}" x2="${ox.toFixed(1)}" y2="${oy.toFixed(1)}" />
+        <text class="map-gap-label" x="${(close ? ex : (ex + ox) / 2).toFixed(1)}" y="${(close ? ey + 30 : (ey + oy) / 2 + 22).toFixed(1)}" text-anchor="middle">${reroute.endGapKm.toFixed(1)} km apart</text>`;
+    const endText = `Usual end${merged ? `, ${nextTrip}` : ""}: ${reroute.own.end.name.replace(" Station", "")}`;
+    const endSide = labelSide(ox, endText, usualLeft ? "end" : "start");
+    const usualEnd = swap.kind === "spare" ? "" : `<g class="map-end is-usual"><circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="8" />
+        <text x="${(ox + (endSide === "end" ? -12 : 12)).toFixed(1)}" y="${(oy - 12).toFixed(1)}" text-anchor="${endSide}">${escapeHtml(endText)}</text></g>`;
+    const rejoinText = nextTrip && `${nextTrip[0].toUpperCase() + nextTrip.slice(1)}: ${rejoinAt.name.replace(" Station", "")}`;
+    const rejoinSide = rejoinText && labelSide(tx, rejoinText, usualLeft ? "start" : "end");
+    const rejoin = rejoinAt && swap.plan.kind === "rejoin" && !merged ? `<g class="map-end is-usual"><circle cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="7" />
+        <text x="${(tx + (rejoinSide === "start" ? 12 : -12)).toFixed(1)}" y="${(ty + 22).toFixed(1)}" text-anchor="${rejoinSide}">${escapeHtml(rejoinText)}</text></g>` : "";
+    overlay = `<path class="map-donor-casing" d="${ownD}" /><path class="map-donor" d="${ownD}" />${link}
       <g class="map-end is-covered" style="--route-line:${routeColor(state.route)}"><circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="9" /></g>
-      <g class="map-end is-usual"><circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="8" />
-        <text x="${(ox + (usualLeft ? -12 : 12)).toFixed(1)}" y="${(oy - 12).toFixed(1)}" text-anchor="${usualLeft ? "end" : "start"}">Usual end: ${escapeHtml(reroute.own.end.name.replace(" Station", ""))}</text></g>
-      <text class="map-gap-label" x="${(close ? ex : (ex + ox) / 2).toFixed(1)}" y="${(close ? ey + 30 : (ey + oy) / 2 + 22).toFixed(1)}" text-anchor="middle">${reroute.endGapKm.toFixed(1)} km apart</text>
+      ${usualEnd}${rejoin}
       ${mapChip(dcx + 24, dcy + 24, swap.donorId, "is-donor")}`;
     const path = lines[state.route];
     const d = svgPath(path);
@@ -588,9 +674,9 @@ function renderMap() {
   const [ux, uy] = p.xy(map.ubc);
   const bar = 2 * p.pxPerKm;
   const label = reroute
-    ? `Map: the ${swap.donorId} bus from ${swap.trip.bay} would run route ${state.route} to ${reroute.path.end.name} instead of its usual trip to ${reroute.own.end.name}; ${reroute.offKm.toFixed(1)} km off its usual path, ending ${reroute.endGapKm.toFixed(1)} km from its usual end.`
+    ? `Map: the ${swap.donorId} bus ${swap.kind === "spare" ? "finishing its day at UBC would run one more trip on" : `from ${swap.trip.bay} would run`} route ${state.route} to ${reroute.path.end.name}${swap.kind === "spare" ? "" : ` instead of its usual trip to ${reroute.own.end.name}`}; ${reroute.offKm.toFixed(1)} km off its usual path. Then: ${planDetail(swap).head}. ${planDetail(swap).text}`
     : extra ? `Map: an added route ${state.route} trip at ${timeLabel(extra.minute)} would follow the highlighted route from UBC Exchange to ${shapeFor(state.route).end.name}. No vehicle has been identified.`
-    : `Map of routes ${map.targetRoutes.join(", ")} leaving UBC Exchange: ${map.targetRoutes.map((id) => `${id} to ${shapeFor(id).end.name}`).join("; ")}.`;
+    : `Map of routes ${order.join(", ")} leaving UBC Exchange: ${order.map((id) => `${id} to ${shapeFor(id).end.name}`).join("; ")}.`;
   $("route-map").innerHTML = `<svg id="map-svg" viewBox="0 0 ${MAP.width} ${frame.height}" role="img" aria-label="${escapeHtml(label)}">
     <path class="map-network" d="${network}" />${rail}${routes}${overlay}${stations}
     <g class="map-ubc"><circle cx="${ux.toFixed(1)}" cy="${uy.toFixed(1)}" r="10" /><circle class="map-ubc-core" cx="${ux.toFixed(1)}" cy="${uy.toFixed(1)}" r="3.5" />
@@ -598,17 +684,19 @@ function renderMap() {
     <g class="map-scale" transform="translate(28,${frame.height - 22})"><path d="M0 -5V5M0 0H${bar.toFixed(1)}M${bar.toFixed(1)} -5V5" /><text x="${(bar + 8).toFixed(1)}" dy="0.35em">2 km</text></g>
     <g class="map-north" transform="translate(${MAP.width - 30},32)"><path d="M0 -13L6 4L0 0L-6 4Z" /><text y="18" text-anchor="middle">N</text></g>
   </svg>`;
-  $("map-legend-routes").innerHTML = map.targetRoutes.map((id) => `<span><i class="key-line" style="background:${routeColor(id)}"></i>${escapeHtml(id)}</span>`).join("");
+  $("map-legend-routes").innerHTML = FOCUS_ROUTES.filter((id) => order.includes(id)).map((id) => `<span><i class="key-line" style="background:${routeColor(id)}"></i>${escapeHtml(id)}</span>`).join("");
   renderRerouteSummary(gap, swap, reroute);
   $("map-panel").classList.toggle("has-swap", Boolean(reroute));
   const special = route().serviceType !== "regular";
   $("map-step").textContent = special ? "SEE THE ROUTE" : extra ? "SEE THE ADDED TRIP" : "SEE THE REROUTE";
   $("map-title").textContent = special ? `Where does the ${state.route} go?` : extra ? `Where would the extra ${state.route} go?` : "Where would the nearby bus go?";
   $("map-subtitle").textContent = reroute
-    ? `The orange bus normally runs the ${swap.donorId} (dashed orange). To cover the ${state.route} gap at ${timeLabel(swap.trip.minute)}, it would follow the ${state.route} line instead.`
+    ? swap.kind === "spare"
+      ? `The orange bus has just finished its day on the ${swap.donorId} (dashed orange). It would run one more trip on the ${state.route} at ${timeLabel(swap.departure)}, then head to the depot.`
+      : `The orange bus normally runs the ${swap.donorId} (dashed orange). To cover the ${state.route} gap at ${timeLabel(swap.departure)}, it would follow the ${state.route} line instead; the dotted line is how it gets back to its own schedule.`
     : extra ? `A proposed ${state.route} departure at ${timeLabel(extra.minute)} would follow the highlighted path. This view does not identify an available bus or driver.`
     : special ? `Published route geometry for ${state.route} from UBC Exchange. No reassignment scenario is shown for this service.`
-      : `Select one of the ${map.targetRoutes.length} routes to inspect its path. When step 03 finds a nearby trip, the map shows how far that bus would leave its usual route.`;
+      : `Select one of the ${order.length} routes to inspect its path. When step 03 finds a bus that could fill a gap, the map shows how far it would leave its usual route.`;
 }
 
 function render() {
