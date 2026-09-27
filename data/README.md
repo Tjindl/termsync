@@ -2,6 +2,8 @@
 
 This directory is the compact input package for [`TECH_SPEC.md`](../TECH_SPEC.md). It was prepared on 2026-09-26 for a **planning demo**, not an operational dispatch system. All CSVs are UTF-8 with a header row; empty numeric cells mean the source did not report a value.
 
+The separate [static app snapshot](../app/README.md) covers 12 UBC Exchange routes; the curated CSV tables below retain the original three-route scope.
+
 | File | Rows | Grain | Role |
 | --- | ---: | --- | --- |
 | `ubc_activity_weekly.csv` | 45 | Vancouver Monday–Sunday week | Week-level synthetic activity flag; 43 weeks are complete. |

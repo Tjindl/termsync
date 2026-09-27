@@ -23,7 +23,7 @@
           <div>
             <p class="eyebrow">A simpler way to test a bus change</p>
             <h1 id="page-title">Where should the next <em>bus</em> go?</h1>
-            <p class="intro-copy">Pick a route, inspect its busy hours, then see whether a lower-load trip from a nearby bay could fill a schedule gap.</p>
+            <p class="intro-copy">Pick a route to see its schedule and, where available, historical loads. For city routes, test whether a nearby lower-load trip could fill a gap.</p>
           </div>
           <div class="snapshot-card" aria-label="Data periods">
             <div class="snapshot-line"><span class="snapshot-dot history"></span><span>LOADS</span><strong>Fall 2025 weekdays</strong></div>
@@ -33,6 +33,7 @@
         </section>
 
         <nav class="route-nav" id="route-nav" aria-label="Choose a bus route"></nav>
+        <p class="route-nav-note">All 12 routes departing UBC Exchange in this sample timetable are shown. Route 68 is a campus shuttle; N17 has timetable and map data only.</p>
 
         <div id="app-error" class="app-error" role="alert" hidden></div>
         <div id="app-content" hidden>
@@ -40,11 +41,11 @@
             <section class="panel pressure-panel" aria-labelledby="pressure-title">
               <div class="section-topline"><span class="step">01</span><span>CHOOSE A TIME BLOCK</span></div>
               <div class="section-heading">
-                <div><h2 id="pressure-title">When is it busiest?</h2><p>Ranked by average highest on-board count</p></div>
-                <span class="source-tag">2025 HISTORY</span>
+                <div><h2 id="pressure-title">When is it busiest?</h2><p id="pressure-subtitle">Ranked by average highest on-board count</p></div>
+                <span class="source-tag" id="pressure-source">2025 HISTORY</span>
               </div>
               <div class="period-list" id="period-list"></div>
-              <p class="small-note">Each bar is the average busiest point along the full route. It is not a count at UBC Exchange.</p>
+              <p class="small-note" id="pressure-note">Each bar is the average busiest point along the full route. It is not a count at UBC Exchange.</p>
             </section>
 
             <section class="panel schedule-panel" aria-labelledby="schedule-title">
@@ -63,9 +64,9 @@
           <section class="panel candidates-panel" aria-labelledby="candidates-title">
             <div class="candidates-heading">
               <div>
-                <div class="section-topline"><span class="step">03</span><span>TEST A NEARBY TRIP</span></div>
+                <div class="section-topline"><span class="step">03</span><span id="candidates-step">TEST A NEARBY TRIP</span></div>
                 <h2 id="candidates-title">Could a nearby bus fill that gap?</h2>
-                <p>Same terminal · within 250 m · scheduled inside the selected gap · historically below 60% load. Check the map for route fit.</p>
+                <p id="candidates-description">Same terminal · within 250 m · scheduled inside the selected gap · historically below 60% load. Check the map for route fit.</p>
               </div>
               <span class="candidate-count" id="candidate-count"></span>
             </div>
@@ -75,7 +76,7 @@
           <section class="panel map-panel" id="map-panel" aria-labelledby="map-title" hidden>
             <div class="candidates-heading">
               <div>
-                <div class="section-topline"><span class="step">04</span><span>SEE THE REROUTE</span></div>
+                <div class="section-topline"><span class="step">04</span><span id="map-step">SEE THE REROUTE</span></div>
                 <h2 id="map-title">Where would the nearby bus go?</h2>
                 <p id="map-subtitle"></p>
               </div>
@@ -97,7 +98,7 @@
       </main>
 
       <footer class="footer">
-        <div class="footer-main"><strong>Decision aid, not dispatch advice.</strong> The load signal is a 2025 route-and-time-block average, shared by every bus time shown. A specific bus may be full or empty. Reassigning a trip needs vehicle, driver, route, and passenger checks.</div>
+        <div class="footer-main"><strong>Decision aid, not dispatch advice.</strong> Where shown, the load signal is a 2025 route-and-time-block average, shared by every bus time in that block. A specific bus may be full or empty. Reassigning a trip needs vehicle, driver, route, and passenger checks.</div>
         <div class="footer-sources"><a href="https://www.translink.ca/tspr" target="_blank" rel="noopener noreferrer">2025 TransLink TSPR ↗</a><a href="https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-data" target="_blank" rel="noopener noreferrer">TransLink GTFS ↗</a></div>
         <small>Route and arrival data used in this product or service is provided by permission of TransLink. TransLink assumes no responsibility for the accuracy or currency of the Data used in this product or service.</small>
       </footer>

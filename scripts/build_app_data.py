@@ -12,11 +12,11 @@ from pathlib import Path
 
 
 SERVICE_DATE = dt.date(2026, 9, 28)  # Representative fall Monday in the bundled feed.
-TARGETS = ("99", "R4", "49", "9", "44", "84")
+TARGETS = ("99", "R4", "49", "9", "44", "84", "4", "14", "25", "33", "68", "N17")
 BLOCKS = ((4, 240, 360, "04–06"), (6, 360, 540, "06–09"),
           (9, 540, 900, "09–15"), (15, 900, 1080, "15–18"),
           (18, 1080, 1260, "18–21"), (21, 1260, 1440, "21–24"),
-          (24, 1440, 1680, "00–04"))
+          (24, 1440, 1680, "00–04 +1"))
 GTFS_URL = "https://gtfs-static.translink.ca/gtfs/google_transit.zip"
 TSPR_URL = "https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_peakload_yearlinedaytypeseasontimerangedirection.csv"
 
@@ -60,11 +60,13 @@ def main():
     load = defaultdict(dict)
     with args.tspr_peak_loads.open(newline="", encoding="utf-8-sig") as handle:
         for row in csv.DictReader(handle):
-            if (row["SeasonYear"], row["Season"], row["DayType"], row["direction_updated"]) != ("2025", "Fall", "MF", "EAST"):
+            if (row["SeasonYear"], row["Season"], row["DayType"]) != ("2025", "Fall", "MF"):
+                continue
+            route = row["Lineno_renamed"]
+            if row["direction_updated"] != ("SOUTH" if route == "68" else "EAST"):
                 continue
             if row["Average_Peak_Load_Factor"] == "NULL":
                 continue
-            route = row["Lineno_renamed"]
             code = row["HourRange"]
             if code in load[route]:
                 raise ValueError(f"Duplicate route/block in TSPR: {route}/{code}")
@@ -89,7 +91,7 @@ def main():
             if not trip or not bay or row.get("pickup_type") == "1":
                 continue
             route = gtfs_routes[trip["route_id"]]["id"]
-            if route not in load:
+            if route not in TARGETS or (route not in load and route != "N17"):
                 continue
             departures[route].append({
                 "minute": minutes(row["departure_time"]),
@@ -101,12 +103,14 @@ def main():
                 "lon": round(float(bay["stop_lon"]), 6),
             })
     route_data = {}
-    for route, trips in departures.items():
+    for route in TARGETS:
+        trips = departures[route]
         trips.sort(key=lambda x: (x["minute"], x["tripId"]))
         if not trips:
             continue
         route_id = next(k for k, v in gtfs_routes.items() if v["id"] == route)
-        route_data[route] = {"name": gtfs_routes[route_id]["name"], "blocks": load[route], "departures": trips}
+        route_data[route] = {"name": gtfs_routes[route_id]["name"], "blocks": load.get(route, {}), "departures": trips,
+                             "serviceType": "campus_shuttle" if route == "68" else "nightbus" if route == "N17" else "regular"}
     assert all(route in route_data for route in TARGETS)
     result = {
         "serviceDate": SERVICE_DATE.isoformat(),

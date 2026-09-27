@@ -155,6 +155,8 @@ def main():
         headsign = Counter(trips[tid]["trip_headsign"] for tid, trip_shape in trip_shapes.items() if trip_shape == sid).most_common(1)[0][0]
         if "Dundarave" in headsign:
             name = "Dundarave"
+        elif route == "N17":
+            name = stop_label(stop["stop_name"])
         shapes_out.append({"route": route, "lengthKm": round(length_km(shape[sid]), 1),
                            "end": {"name": name, "lon": round(x, 5), "lat": round(y, 5)},
                            "coords": rounded(simplify(shape[sid], 0.00003), 5)})

@@ -2,7 +2,7 @@
 
 From the repository root, run `python3 -m http.server 5173` and open `http://localhost:5173/`. This is a static HTML/CSS/JavaScript app; it has no framework or build step.
 
-The page has six selectable target routes (99, R4, 49, 9, 44, 84):
+The page has 12 selectable routes from UBC Exchange on its sample timetable. Ten regular routes (99, R4, 49, 9, 44, 84, 4, 14, 25, 33) have the full comparison flow:
 
 1. Click a route to rank its fall weekday time blocks by 2025 **average peak passengers on board** from TransLink's TSPR. The percentage/status uses the corresponding historical average peak load factor. It describes the busiest point along the route, not UBC Exchange.
 2. Click a time block, hour, and scheduled departure from the 2026-09-28 TransLink GTFS feed. The app shows the gap until the next scheduled bus. This is a **2025 versus 2026 scenario**, not a matched observation.
@@ -10,11 +10,13 @@ The page has six selectable target routes (99, R4, 49, 9, 44, 84):
 
 The candidate is a proposed **trip reassignment**, not a real-time bus location, an empty bus, or a verified spare vehicle. Moving it would remove a donor-route trip. Any real change requires current per-trip passenger loads, vehicle compatibility, driver/block assignment, recovery time, and operational approval. The late-night route 49 example illustrates why a nearby bay alone is insufficient: its route fit is poor. The busiest 15:00–18:00 block has no lower-load donor under this rule.
 
-`app/data.json` is a compact, dated snapshot of 10 routes and 1,047 UBC Exchange departures. Rebuild it with `scripts/build_app_data.py --gtfs google_transit.zip --tspr-peak-loads tspr2025_bus_peakload_yearlinedaytypeseasontimerangedirection.csv --out app/data.json` after downloading the [official GTFS feed](https://gtfs-static.translink.ca/gtfs/google_transit.zip) and [official 2025 TSPR CSV](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_peakload_yearlinedaytypeseasontimerangedirection.csv). The script needs only Python's standard library.
+Route 68 is a [UBC campus shuttle](https://planning.ubc.ca/transportation/transit). Its timetable, map, and historical load are visible, but the app excludes it as either a target or donor in city-route swaps. N17 has timetable and map data only: the app has no comparable 2025 peak-load series for this NightBus and makes no crowding or bus-swap claim for it. Its after-midnight GTFS departures appear in the `00–04 +1` time block, meaning the calendar day after the sample service date.
+
+`app/data.json` is a compact, dated snapshot of 12 routes and 1,116 UBC Exchange departures. Rebuild it with `scripts/build_app_data.py --gtfs google_transit.zip --tspr-peak-loads tspr2025_bus_peakload_yearlinedaytypeseasontimerangedirection.csv --out app/data.json` after downloading the [official GTFS feed](https://gtfs-static.translink.ca/gtfs/google_transit.zip) and [official 2025 TSPR CSV](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_peakload_yearlinedaytypeseasontimerangedirection.csv). The script needs only Python's standard library.
 
 The supplied synthetic activity is kept in the separate [`data/` package](../data/README.md) and is not used to estimate bus loads or specific bus arrival times. For the hackathon, run the source analysis and build the curated tables in Databricks before presenting the app's decisions.
 
-**Step 04, the route map.** The six selectable routes keep one colour everywhere (route buttons, map lines, chips). The nearby bus is always orange. When step 03 finds a nearby bus, the map shows:
+**Step 04, the route map.** The 12 selectable routes keep one colour everywhere (route buttons, map lines, chips). The nearby bus is always orange. When step 03 finds a nearby bus, the map shows:
 - its usual route, dashed
 - the route it would run instead, with the bus riding it
 - where it would finish compared with its usual end

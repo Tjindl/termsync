@@ -1,5 +1,7 @@
 # UBC Service Planner — app specification
 
+This is the original hackathon proposal for three routes. The current static demo has [12 selectable UBC Exchange routes](app/README.md) and does not implement every Databricks or academic-week feature proposed below.
+
 ## 1. Purpose
 
 Build a Databricks-powered planning app for existing UBC bus routes **99, R4, and 49**. A planner selects a week, direction, and time, sees the published departures and historical crowding evidence, and tests adding or moving a departure. The app answers: **Which service change is worth investigating or piloting?**
