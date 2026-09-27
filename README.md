@@ -1,6 +1,6 @@
 # Termsync
 
-A small UBC Exchange service-planning demo for three crowded routes: **99, R4 and 49**. The other routes departing the Exchange in its sample timetable (9, 44, 84, 4, 14, 25, 33, 68 and N17) are checked as buses that could fill their gaps.
+A small UBC Exchange planning demo for the 12 routes in its sample timetable: **99, R4, 49, 9, 44, 84, 4, 14, 25, 33, 68, and N17**. It asks a concrete question: if one bay has a long line and another nearby bay has few people waiting, would redirecting a scheduled bus reduce waiting without disrupting that bus's next trip?
 
 Run it locally from this folder:
 
@@ -8,11 +8,11 @@ Run it locally from this folder:
 python3 -m http.server 5173
 ```
 
-Then open [http://localhost:5173](http://localhost:5173). Pick a route, inspect the busiest historical time blocks, click a scheduled departure, and see which bus from another route could practically fill the gap, or where an added trip would help. The app is static and needs no build step.
+Then open [http://localhost:5173](http://localhost:5173). The app is static and needs no build step. Try either marked example, or pick a route and time, choose a screened nearby trip, and enter the two bay line counts. The app shows the wait change at both bays, the departure gaps, the bay distance, the route overlap, and a GTFS vehicle-block timing check.
 
 - [How the app works and what its numbers mean](app/README.md)
-- [Peak service fallback and route 33 example](PEAK_SERVICE_PLAN.md)
 - [Curated data and source links](data/README.md)
 - [Original hackathon technical specification](TECH_SPEC.md)
+- [Earlier peak-service analysis](PEAK_SERVICE_PLAN.md)
 
-The displayed crowding is a **2025 route-level historical average**, while the scheduled departure times come from a **2026 GTFS sample date**. Route 68 is a campus shuttle and N17 has no comparable historical load series, so neither is used as a replacement. The app cannot tell whether a particular bus is full or free to redirect. A finishing bus adds driver time; a borrowed trip removes a trip from its own route; an added-trip scenario requires a new bus and operator.
+The displayed crowding is a **fall 2025 route-level historical average**, while scheduled trips come from the **2026-09-28 GTFS sample day**. Neither source measures a live UBC bay queue. The two example line counts are illustrative and manually entered counts are unverified. Rerouting removes one trip from its original route; actual changes require passenger, capacity, vehicle, driver, bay, and recovery checks. Route 68 is a campus shuttle and N17 has no comparable historical load series, so neither is used for a city-route reassignment.
