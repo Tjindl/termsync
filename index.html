@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f4f3ef" />
+    <meta name="theme-color" content="#f3f1ea" />
     <title>Termsync — UBC Bus Planner</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="app/styles.css" />
     <script src="app/app.js" defer></script>
   </head>
@@ -15,57 +15,57 @@
     <div class="shell">
       <header class="masthead">
         <a class="brand" href="./" aria-label="Termsync home"><span class="brand-mark">t<span>.</span></span><span>termsync</span></a>
-        <span class="masthead-meta">UBC EXCHANGE <span class="meta-divider">/</span> SERVICE PLANNER</span>
+        <span class="masthead-meta">UBC Exchange service planner</span>
       </header>
 
       <main>
         <section class="intro" aria-labelledby="page-title">
           <div>
-            <p class="eyebrow">A simpler way to test a bus change</p>
-            <h1 id="page-title">Where should the next <em>bus</em> go?</h1>
-            <p class="intro-copy">Compare lines at nearby UBC bays. Start from simulated line counts or enter your own to see whose wait shrinks, whose wait grows, and whether a bus can fit its next scheduled trip.</p>
+            <p class="eyebrow">The 99, R4 and 49 at UBC Exchange</p>
+            <h1 id="page-title">Where should the next bus go?</h1>
+            <p class="intro-copy">Find the hour a route runs short, pick the gap between two departures, and see whether redirecting a nearby bus, adding a trip, or leaving it alone serves riders best.</p>
           </div>
-          <div class="snapshot-card" aria-label="Data periods">
-            <div class="snapshot-line"><span class="snapshot-dot history"></span><span>LOADS</span><strong>Fall 2025 weekdays</strong></div>
-            <div class="snapshot-line"><span class="snapshot-dot schedule"></span><span>TIMES</span><strong>Mon 28 Sep 2026</strong></div>
-            <div class="snapshot-line"><span class="snapshot-dot simulated"></span><span>LINES</span><strong>Simulated student demand</strong></div>
-            <p>Line counts are simulated or manual inputs, never live observations.</p>
-          </div>
+          <dl class="sources" aria-label="Data used">
+            <dt>Loads</dt><dd>TransLink, fall 2025 weekdays</dd>
+            <dt>Timetable</dt><dd>Monday 28 September 2026</dd>
+            <dt>Demand</dt><dd>Simulated students, not live counts</dd>
+          </dl>
         </section>
 
         <nav class="route-nav" id="route-nav" aria-label="Choose a bus route"></nav>
-        <p class="route-nav-note">All 12 routes departing UBC Exchange in this sample timetable are shown. Route 68 is a campus shuttle; N17 has timetable and map data only.</p>
 
+        <p id="app-loading" class="app-loading" role="status">Loading the timetable, loads and map</p>
         <div id="app-error" class="app-error" role="alert" hidden></div>
+        <section id="answer" class="answer" aria-live="polite" aria-label="Recommendation for the selected gap" hidden></section>
         <div id="app-content" hidden>
           <div class="work-grid">
             <section class="panel pressure-panel" aria-labelledby="pressure-title">
-              <div class="section-topline"><span class="step">01</span><span id="pressure-step">CHOOSE A TIME BLOCK</span></div>
+              <div class="section-topline"><span class="step">1</span><span id="pressure-step">Choose a time block</span></div>
               <div class="section-heading">
                 <div><h2 id="pressure-title">When is it busiest?</h2><p id="pressure-subtitle">Ranked by average highest on-board count</p></div>
-                <span class="source-tag" id="pressure-source">2025 HISTORY</span>
+                <span class="source-tag" id="pressure-source">TransLink 2025 loads</span>
               </div>
               <div class="period-list" id="period-list"></div>
               <p class="small-note" id="pressure-note">Each bar is the average busiest point along the full route. It is not a count at UBC Exchange.</p>
             </section>
 
             <section class="panel schedule-panel" aria-labelledby="schedule-title">
-              <div class="section-topline"><span class="step">02</span><span>CHOOSE A SCHEDULE GAP</span></div>
+              <div class="section-topline"><span class="step">2</span><span>Choose a gap between buses</span></div>
               <div class="section-heading">
                 <div><h2 id="schedule-title">Which bus time?</h2><p id="schedule-subtitle"></p></div>
-                <span class="source-tag schedule-tag">2026 SCHEDULE</span>
+                <span class="source-tag">2026 timetable</span>
               </div>
               <div id="pressure-callout" class="pressure-callout"></div>
-              <div id="hour-tabs" class="hour-tabs" role="tablist" aria-label="Choose an hour"></div>
+              <div id="hour-tabs" class="hour-tabs" role="group" aria-label="Choose an hour"></div>
               <div id="departure-list" class="departure-list" aria-label="Scheduled departures"></div>
               <div id="gap-summary" class="gap-summary"></div>
             </section>
           </div>
 
-          <section class="panel candidates-panel" aria-labelledby="candidates-title">
+          <section class="panel candidates-panel" id="gap-options" aria-labelledby="candidates-title">
             <div class="candidates-heading">
               <div>
-                <div class="section-topline"><span class="step">03</span><span id="candidates-step">FILL THE GAP</span></div>
+                <div class="section-topline"><span class="step">3</span><span id="candidates-step">Fill the gap</span></div>
                 <h2 id="candidates-title">How should we handle this gap?</h2>
                 <p id="candidates-description">Compare redirecting a bus, adding a trip, or leaving it, using simulated student demand. The line counts below start from the same simulation; replace them with counts you observe.</p>
               </div>
@@ -77,11 +77,11 @@
           <section class="panel map-panel" id="map-panel" aria-labelledby="map-title" hidden>
             <div class="candidates-heading">
               <div>
-                <div class="section-topline"><span class="step">04</span><span id="map-step">SEE THE REROUTE</span></div>
-                <h2 id="map-title">Where would the nearby bus go?</h2>
+                <div class="section-topline"><span class="step">4</span><span id="map-step">See the reroute</span></div>
+                <h2 id="map-title">Where would the borrowed bus go?</h2>
                 <p id="map-subtitle"></p>
               </div>
-              <span class="source-tag schedule-tag">2026 GTFS SHAPES</span>
+              <span class="source-tag">2026 GTFS route shapes</span>
             </div>
             <div class="map-body">
               <div id="route-map" class="route-map"></div>
@@ -89,8 +89,8 @@
             </div>
             <div class="map-legend" aria-hidden="true">
               <div id="map-legend-routes" class="map-legend-routes"></div>
-              <span class="donor-only"><i class="key-line is-donor"></i>Nearby bus: its usual route</span>
-              <span class="donor-only"><i class="key-dot"></i>Nearby bus: rerouted trip</span>
+              <span class="donor-only"><i class="key-line is-donor"></i>Borrowed bus: its usual route</span>
+              <span class="donor-only"><i class="key-dot"></i>Borrowed bus on the covered trip</span>
               <span><i class="key-line is-rail"></i>SkyTrain</span>
               <span><i class="key-line is-network"></i>Other bus routes</span>
             </div>

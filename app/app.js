@@ -174,18 +174,27 @@ function selectHour(hour) {
   render();
 }
 
+// The three corridors this planner is about come first; the other UBC Exchange routes follow as small
+// destination signs. They can still be picked, and they supply the buses that could be redirected.
+const FOCUS_ROUTES = ["99", "R4", "49"];
+
+function routeDetail(info) {
+  const loads = Object.values(info.blocks).map((value) => value.loadPercent);
+  const peak = loads.length ? Math.round(Math.max(...loads)) : null;
+  return info.serviceType === "nightbus" ? "NightBus, timetable only"
+    : info.serviceType === "campus_shuttle" ? `Campus shuttle, busiest block ${peak}% load`
+      : `Busiest block ${peak}% load`;
+}
+
 function renderRoutes() {
-  $("route-nav").innerHTML = state.data.targetRoutes.map((id) => {
-    const info = route(id);
-    const peak = Object.values(info.blocks).length ? Math.max(...Object.values(info.blocks).map((value) => value.loadPercent)) : null;
-    const detail = info.serviceType === "nightbus" ? "NightBus · schedule only"
-      : info.serviceType === "campus_shuttle" ? `Campus shuttle · ${Math.round(peak)}% peak load`
-        : `Peak block ${Math.round(peak)}% load`;
-    return `<button class="route-button" type="button" data-route="${escapeHtml(id)}" aria-pressed="${id === state.route}" style="--route-color:${routeColor(id)}">
+  const ids = state.data.targetRoutes;
+  const focus = FOCUS_ROUTES.filter((id) => ids.includes(id));
+  const others = ids.filter((id) => !focus.includes(id));
+  $("route-nav").innerHTML = `<div class="route-focus">${focus.map((id) => `<button class="route-button" type="button" data-route="${escapeHtml(id)}" aria-pressed="${id === state.route}" style="--route-color:${routeColor(id)}">
       <span class="route-number">${escapeHtml(id)}</span>
-      <span class="route-info"><strong>${escapeHtml(info.name)}</strong><small>${detail}</small></span>
-      <span class="route-arrow" aria-hidden="true">↗</span></button>`;
-  }).join("");
+      <span class="route-info"><strong>${escapeHtml(route(id).name)}</strong><small>${routeDetail(route(id))}</small></span></button>`).join("")}</div>
+    <div class="route-others" role="group" aria-label="Other routes from UBC Exchange"><span>Other routes from UBC Exchange</span>${others.map((id) => `<button class="route-sign" type="button" data-route="${escapeHtml(id)}" aria-pressed="${id === state.route}"
+      style="--route-color:${routeColor(id)}" title="${escapeHtml(route(id).name)}" aria-label="Route ${escapeHtml(id)}, ${escapeHtml(route(id).name)}: ${routeDetail(route(id))}">${escapeHtml(id)}</button>`).join("")}</div>`;
   $("route-nav").querySelectorAll("[data-route]").forEach((button) => button.addEventListener("click", () => selectRoute(button.dataset.route)));
 }
 
@@ -261,10 +270,10 @@ function renderHourlyChart() {
   const students = hourlyDemand(state.route);
   const info = { capacity: hourlyCapacity(state.route) };
   const hours = students.map((value, hour) => (value != null ? hour : null)).filter((hour) => hour !== null);
-  $("pressure-step").textContent = "CHOOSE AN HOUR";
+  $("pressure-step").textContent = "Choose an hour";
   $("pressure-title").textContent = "When is it busiest?";
   $("pressure-subtitle").textContent = `Students leaving UBC on the ${state.route} each hour · ${weekdayLabel()}`;
-  $("pressure-source").textContent = "MONTE CARLO DEMAND";
+  $("pressure-source").textContent = "simulated student demand";
   $("pressure-source").className = "source-tag";
   $("pressure-note").textContent = "Simulated student demand from the team's Monte Carlo model: students only, not all riders, and not observed counts. The dashed line is the capacity of the buses the 2026 timetable runs each hour (TransLink's implied capacity per bus × buses scheduled). Click an hour to see its departures.";
   const width = Math.max(280, Math.round($("period-list").clientWidth || 560)), height = 250;
@@ -292,7 +301,7 @@ function renderHourlyChart() {
     const load = info.capacity[hour] ? students[hour] / info.capacity[hour] * 100 : null;
     const status = load === null ? null : pressureStatus(load);
     const label = `${String(hour).padStart(2, "0")}:00–${String(hour + 1).padStart(2, "0")}:00: about ${Math.round(students[hour]).toLocaleString("en-CA")} students leaving UBC; `
-      + (status ? `scheduled capacity about ${Math.round(info.capacity[hour]).toLocaleString("en-CA")}, ${Math.round(load)}% full, ${status.label.toLowerCase()}` : "no buses scheduled");
+      + (status ? `scheduled capacity about ${(Math.round(info.capacity[hour] / 10) * 10).toLocaleString("en-CA")}, ${Math.round(load)}% full, ${status.label.toLowerCase()}` : "no buses scheduled");
     return `<g class="hour-point${status ? ` is-${status.short}` : ""}" data-hour="${hour}" role="button" tabindex="0" aria-pressed="${hour === selected}" aria-label="${escapeHtml(label)}" data-tip="${escapeHtml(label)}">
       <rect class="hour-hit" x="${(x(hour) - half).toFixed(1)}" y="${pad.top}" width="${(2 * half).toFixed(1)}" height="${height - pad.top - pad.bottom}" />
       ${hour === selected ? `<line class="hour-guide" x1="${x(hour).toFixed(1)}" x2="${x(hour).toFixed(1)}" y1="${pad.top}" y2="${height - pad.bottom}" />` : ""}
@@ -338,11 +347,11 @@ function renderHourlyChart() {
 
 function renderBlockBars() {
   const scheduleOnly = route().serviceType === "nightbus";
-  $("pressure-step").textContent = "CHOOSE A TIME BLOCK";
+  $("pressure-step").textContent = "Choose a time block";
   $("pressure-title").textContent = scheduleOnly ? "When does it run?" : "When is it busiest?";
   $("pressure-subtitle").textContent = scheduleOnly ? "Scheduled departures by time of day" : "Average highest on-board count, by time of day";
-  $("pressure-source").textContent = scheduleOnly ? "2026 SCHEDULE" : "2025 HISTORY";
-  $("pressure-source").className = scheduleOnly ? "source-tag schedule-tag" : "source-tag";
+  $("pressure-source").textContent = scheduleOnly ? "2026 timetable" : "TransLink 2025 loads";
+  $("pressure-source").className = "source-tag";
   $("pressure-note").textContent = scheduleOnly
     ? "These are scheduled departures after midnight on the following calendar day. No comparable historical load series is available here."
     : "Each bar is the average busiest point along the full route, not a count at UBC Exchange. Click a bar to pick that time block.";
@@ -387,10 +396,11 @@ function renderSchedule() {
     : `<strong>Schedule only</strong><span>No load estimate</span><p>This app has no comparable historical load measure for ${escapeHtml(state.route)}, so it cannot estimate crowding or suggest a bus swap.</p>`;
   const hours = [];
   for (let hour = block().start; hour < block().end; hour += 60) hours.push(hour);
-  $("hour-tabs").innerHTML = hours.map((hour) => `<button class="hour-tab" type="button" role="tab" data-hour="${hour}" aria-selected="${hour === state.hour}">${hourLabel(hour)}</button>`).join("");
+  $("hour-tabs").innerHTML = hours.map((hour) => `<button class="hour-tab" type="button" data-hour="${hour}" aria-pressed="${hour === state.hour}">${hourLabel(hour)}</button>`).join("");
   $("hour-tabs").querySelectorAll("[data-hour]").forEach((button) => button.addEventListener("click", () => selectHour(Number(button.dataset.hour))));
   const trips = departures().filter((trip) => trip.minute >= state.hour && trip.minute < state.hour + 60);
-  $("departure-list").innerHTML = trips.length ? trips.map((trip) => `<button class="departure" type="button" data-trip="${escapeHtml(trip.tripId)}" aria-pressed="${trip.tripId === state.tripId}" aria-label="Scheduled departure ${timeLabel(trip.minute)}, ${escapeHtml(trip.bay)}">${timeLabel(trip.minute)}</button>`).join("")
+  const closing = selectedGap()?.next.tripId;  // the departure that closes the selected gap
+  $("departure-list").innerHTML = trips.length ? trips.map((trip) => `<button class="departure${trip.tripId === closing ? " is-next" : ""}" type="button" data-trip="${escapeHtml(trip.tripId)}" aria-pressed="${trip.tripId === state.tripId}" aria-label="Scheduled departure ${timeLabel(trip.minute)}, ${escapeHtml(trip.bay)}">${timeLabel(trip.minute)}</button>`).join("")
     : `<p class="empty-departures">No scheduled departures in this hour.</p>`;
   $("departure-list").querySelectorAll("[data-trip]").forEach((button) => button.addEventListener("click", () => { state.tripId = button.dataset.trip; state.candidateId = null; clearQueueCounts(); renderSchedule(); renderCandidates(); }));
   const gap = selectedGap();
@@ -508,33 +518,64 @@ function compareOptions(gap, candidates) {
   return { gap, add, redirect, load, best };
 }
 
+/** What to do with the gap, in words: the headline, why, and the passenger-minutes it saves. */
+function verdictFor(result) {
+  const { add, redirect, load, best } = result;
+  const loadText = load === null ? "an unknown share of its scheduled capacity" : `${Math.round(load)}% of its scheduled capacity`;
+  const whyNotRedirect = !redirect ? "no bus can be redirected"
+    : redirect.gain < 0 ? "redirecting a bus would cost other riders more than it saves" : "redirecting a bus would not save any waiting";
+  if (best === "redirect") return { headline: `Redirect the ${redirect.candidate.donorId}`, reason: "It saves more waiting than it costs, without an extra bus.", value: redirect.gain };
+  if (best === "add") return { headline: "Add a trip", reason: `This hour runs at ${loadText}, and ${whyNotRedirect}.`, value: add.gain };
+  return { headline: "Leave it", reason: `This hour runs at ${loadText}, and ${whyNotRedirect}.`, value: 0 };
+}
+
+const signedMinutes = (value) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(Math.round(value)).toLocaleString("en-CA")}`;
+
 function compareMarkup(result) {
   if (!result) return "";
-  const { gap, add, redirect, load, best } = result;
-  const signed = (value) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(Math.round(value)).toLocaleString("en-CA")}`;
+  const { gap, add, redirect, best } = result;
   const tone = (value) => (value > 0 ? "is-positive" : value < 0 ? "is-negative" : "");
-  const r = state.route, loadText = load === null ? "" : `${Math.round(load)}% of its scheduled capacity`;
+  const r = state.route, verdict = verdictFor(result);
   const card = (key, kicker, value, text) => `<div class="compare-card${best === key ? " is-best" : ""}">
       <span class="compare-kicker">${kicker}${best === key ? '<span class="compare-badge">Recommended</span>' : ""}</span>
-      <strong class="compare-value ${tone(value)}">${value === null ? "—" : signed(value)}</strong><small>passenger-minutes at the bays</small>
+      <strong class="compare-value ${tone(value)}">${value === null ? "—" : signedMinutes(value)}</strong><small>passenger-minutes at the bays</small>
       <p>${text}</p></div>`;
   const redirectText = redirect
     ? `Move the ${escapeHtml(redirect.candidate.donorId)} at ${timeLabel(redirect.candidate.trip.minute)}: ~${redirect.target} waiting for the ${escapeHtml(r)} leave ${redirect.saved} min sooner, but ~${redirect.donor} waiting for the ${escapeHtml(redirect.candidate.donorId)} wait ${redirect.lost} min longer. No extra bus needed.`
     : "No bus passes the screen for this gap.";
-  const whyNotRedirect = !redirect ? "no bus can be redirected"
-    : redirect.gain < 0 ? "redirecting a bus would cost other riders more than it saves" : "redirecting a bus would not save any waiting";
-  const verdict = best === "redirect" ? `Redirect the ${escapeHtml(redirect.candidate.donorId)}: it saves more waiting than it costs, without an extra bus.`
-    : best === "add" ? `Add a trip: this hour runs at ${loadText}, and ${whyNotRedirect}.`
-      : `Leave it: this hour runs at ${loadText || "an unknown share of capacity"}, and ${whyNotRedirect}.`;
   return `<section class="compare" aria-label="Ways to handle this gap">
-    <span class="metric-label">THREE WAYS TO HANDLE THE ${timeLabel(gap.first.minute)} → ${timeLabel(gap.next.minute)} GAP · MONTE CARLO ESTIMATE, ${escapeHtml(weekdayLabel().toUpperCase())}</span>
+    <span class="metric-label">Three ways to handle the ${timeLabel(gap.first.minute)} → ${timeLabel(gap.next.minute)} gap, using simulated demand for ${escapeHtml(weekdayLabel())}</span>
     <div class="compare-grid">
-      ${card("redirect", "REDIRECT A BUS", redirect ? redirect.gain : null, redirectText)}
-      ${card("add", "ADD ONE TRIP", add.gain, `Add ${/^(R|8)/.test(r) ? "an" : "a"} ${escapeHtml(r)} at ${timeLabel(add.minute)}: ~${add.queue} waiting leave ${add.saved} min sooner and nobody loses a bus. Needs one more bus and driver for about ${add.run ?? "an hour's"} min plus the trip back.`)}
-      ${card("leave", "LEAVE IT", 0, `The ${timeLabel(gap.next.minute)} ${escapeHtml(r)} takes everyone waiting.${loadText ? ` This hour runs at ${loadText}.` : ""}`)}
+      ${card("redirect", "Redirect a bus", redirect ? redirect.gain : null, redirectText)}
+      ${card("add", "Add one trip", add.gain, `Add ${/^(R|8)/.test(r) ? "an" : "a"} ${escapeHtml(r)} at ${timeLabel(add.minute)}: ~${add.queue} waiting leave ${add.saved} min sooner and nobody loses a bus. Needs one more bus and driver for about ${add.run ?? "an hour's"} min plus the trip back.`)}
+      ${card("leave", "Leave it", 0, `The ${timeLabel(gap.next.minute)} ${escapeHtml(r)} takes everyone waiting.`)}
     </div>
-    <p class="compare-verdict">${verdict}</p>
+    <p class="compare-verdict">${escapeHtml(verdict.headline)}. ${escapeHtml(verdict.reason)}</p>
   </section>`;
+}
+
+/** The one loud line under the route picker: what to do with the selected gap. */
+function renderAnswer(result) {
+  const el = $("answer");
+  const chip = `<span class="chip" style="--route-color:${routeColor(state.route)}">${escapeHtml(state.route)}</span>`;
+  const gap = selectedGap();
+  el.hidden = false;
+  if (!result) {
+    const why = route().serviceType === "nightbus" ? "The N17 is shown for its timetable and path only; there is no load data to judge it."
+      : route().serviceType === "campus_shuttle" ? "The 68 campus shuttle isn't swapped with city routes, so there is nothing to recommend."
+        : !gap ? "Pick a departure below to see what to do with the gap after it."
+          : gap.next.minute - gap.first.minute > MAX_FILLABLE_GAP ? "This is a scheduled service break, not a gap to fill."
+            : "There is no simulated demand for this time, so there is no recommendation.";
+    el.className = "answer is-quiet";
+    el.innerHTML = `${chip}<div><span class="answer-context">${escapeHtml(route().name)}</span><p class="answer-verdict">${why}</p></div>`;
+    return;
+  }
+  const verdict = verdictFor(result);
+  el.className = "answer";
+  el.innerHTML = `${chip}
+    <div><span class="answer-context">${escapeHtml(weekdayLabel())} · the ${timeLabel(result.gap.first.minute)} → ${timeLabel(result.gap.next.minute)} gap</span>
+      <p class="answer-verdict">${escapeHtml(verdict.headline)}<small>${escapeHtml(verdict.reason)}</small></p></div>
+    <div class="answer-side"><span class="answer-value">${signedMinutes(verdict.value)}</span><a href="#gap-options">passenger-minutes · compare the options</a></div>`;
 }
 
 function queueResultMarkup(gap, candidate) {
@@ -569,7 +610,7 @@ function applyQueueExample(which) {
 function renderCandidates() {
   const gap = selectedGap();
   const special = route().serviceType !== "regular";
-  $("candidates-step").textContent = special ? "ROUTE CONTEXT" : "FILL THE GAP";
+  $("candidates-step").textContent = special ? "Route context" : "Fill the gap";
   $("candidates-title").textContent = special ? "How can we use this route?" : "How should we handle this gap?";
   $("candidates-description").textContent = special
     ? "Its published timetable and path are available. This app compares city-bus queue scenarios separately."
@@ -577,21 +618,24 @@ function renderCandidates() {
   if (special) {
     state.candidateId = null;
     state.swap = null;
-    $("candidate-count").textContent = "ROUTE VIEW";
+    $("candidate-count").textContent = "";
     const title = route().serviceType === "campus_shuttle" ? "Campus shuttle" : "NightBus schedule";
     const explanation = route().serviceType === "campus_shuttle"
       ? "Route 68 connects UBC Exchange with Wesbrook Village. Its historical load and timetable are shown, but this campus shuttle is excluded from swaps with city routes."
       : "N17 has scheduled trips and a mapped path, but no comparable 2025 route-load series in this app. A crowding or bus-swap claim would be unsupported.";
-    $("candidates-content").innerHTML = `<div class="no-candidates"><span class="no-candidates-icon" aria-hidden="true">i</span><div><strong>${title}</strong><p>${explanation}</p></div></div>`;
+    $("candidates-content").innerHTML = `<div class="no-candidates"><div><strong>${title}</strong><p>${explanation}</p></div></div>`;
+    renderAnswer(null);
     renderMap();
     return;
   }
-  const examples = `<div class="queue-examples"><span>SIMULATED DEMAND SCENARIOS</span>
+  const examples = `<div class="queue-examples"><span>Examples from the simulation</span>
     ${Object.entries(QUEUE_EXAMPLES).map(([key, example]) => `<button type="button" data-queue-example="${key}">${escapeHtml(example.label)}</button>`).join("")}
     <small>Line counts come from a Monte Carlo student simulation and can be changed below. No live queue feed is connected.</small></div>`;
   const candidates = queueCandidatesForGap(gap);
-  const comparison = compareMarkup(compareOptions(gap, candidates));
-  $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "BUS TO REDIRECT" : "BUSES TO REDIRECT"}`;
+  const options = compareOptions(gap, candidates);
+  const comparison = compareMarkup(options);
+  renderAnswer(options);
+  $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "bus to redirect" : "buses to redirect"}`;
   if (!candidates.length) {
     state.candidateId = null;
     state.swap = null;
@@ -599,7 +643,7 @@ function renderCandidates() {
       : !state.map || !state.duties ? "The route map or vehicle blocks are unavailable."
         : gap.next.minute - gap.first.minute > MAX_FILLABLE_GAP ? "This is a scheduled service break, so the app does not propose borrowing a bus for it."
           : "No nearby route follows a suitable path and fits the bus's published next duty for this gap.";
-    $("candidates-content").innerHTML = `${comparison}${examples}<div class="no-candidates"><span class="no-candidates-icon" aria-hidden="true">∅</span><div><strong>No screened bus to redirect</strong><p>${message}</p></div></div>`;
+    $("candidates-content").innerHTML = `${comparison}${examples}<div class="no-candidates"><div><strong>No screened bus to redirect</strong><p>${message}</p></div></div>`;
   } else {
     if (!candidates.some((candidate) => candidate.id === state.candidateId)) {
       state.candidateId = candidates[0].id;
@@ -612,21 +656,21 @@ function renderCandidates() {
       state.donorQueue = selected.simulated?.donor ?? null;
       state.queueSource = selected.simulated ? "simulated" : null;
     }
-    const sourceLabel = state.queueSource === "simulated" ? `SIMULATED STUDENT DEMAND · ${weekdayLabel().toUpperCase()} · NOT OBSERVED`
-      : state.queueSource === "manual" ? "MANUAL COUNTS · NOT VERIFIED BY APP" : "NO SIMULATED DEMAND FOR THIS TIME · ENTER COUNTS";
+    const sourceLabel = state.queueSource === "simulated" ? `Simulated student demand, ${weekdayLabel()}. Not observed counts.`
+      : state.queueSource === "manual" ? "Your counts. The app can't check them." : "No simulated demand for this time. Enter counts.";
     const dutyNote = selected.duty.next
       ? `Its next published trip starts ${timeLabel(selected.duty.next[0])}. ${selected.emptyRunKm ? `After an empty run of about ${selected.emptyRunKm.toFixed(1)} km it` : "It"} still has ${Math.floor(selected.spareMinutes)} min to spare after ${SCREEN.recoveryMinutes} min recovery.`
       : "No later passenger trip appears in this GTFS vehicle block. Driver and depot duties are still unknown.";
     const cautionNote = selected.cautions.length
       ? `<ul class="queue-cautions">${selected.cautions.map((text) => `<li>${escapeHtml(text)}</li>`).join("")}</ul>` : "";
     $("candidates-content").innerHTML = `${comparison}${examples}<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
-      <span class="candidate-top"><span class="candidate-route">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">Move the ${escapeHtml(candidate.donorId)} at ${timeLabel(candidate.trip.minute)}</span><span class="candidate-time">${escapeHtml(candidate.trip.bay)} → ${escapeHtml(gap.first.bay)} · ${candidate.distance} m</span></span></span>
+      <span class="candidate-top"><span class="candidate-route" style="--route-color:${routeColor(candidate.donorId)}">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">Move the ${escapeHtml(candidate.donorId)} at ${timeLabel(candidate.trip.minute)}</span><span class="candidate-time">${escapeHtml(candidate.trip.bay)} → ${escapeHtml(gap.first.bay)} · ${candidate.distance} m</span></span></span>
       <span class="candidate-divider"></span><span class="candidate-facts"><span>${candidate.cautions.length ? `${candidate.cautions.length} ${candidate.cautions.length === 1 ? "caution" : "cautions"}` : "Clean fit"}</span><span>${candidate.reroute.offKm.toFixed(1)} km off path</span></span>
       ${candidate.simulatedGain === null ? "" : `<span class="candidate-sim ${candidate.simulatedGain < 0 ? "is-negative" : ""}">Simulated: ${candidate.simulatedGain === 0 ? "no wait change"
         : `${candidate.simulatedGain < 0 ? "adds" : "saves"} ${Math.abs(candidate.simulatedGain).toLocaleString()} passenger-min`}</span>`}
     </button>`).join("")}</div>
     <div class="queue-workspace">
-      <div class="queue-tradeoff"><div><span class="metric-label">${escapeHtml(state.route)} MAX GAP</span><strong>${selected.targetBefore} → ${selected.targetAfter} min</strong></div><div><span class="metric-label">${escapeHtml(selected.donorId)} MAX GAP</span><strong>${selected.donorBefore} → ${selected.donorAfter} min</strong></div></div>
+      <div class="queue-tradeoff"><div><span class="metric-label">Longest wait for the ${escapeHtml(state.route)}</span><strong>${selected.targetBefore} → ${selected.targetAfter} min</strong></div><div><span class="metric-label">Longest wait for the ${escapeHtml(selected.donorId)}</span><strong>${selected.donorBefore} → ${selected.donorAfter} min</strong></div></div>
       <div class="queue-inputs">
         <label>Waiting for ${escapeHtml(state.route)} · ${escapeHtml(gap.first.bay)}<input id="target-queue" type="number" min="0" max="1000" step="1" inputmode="numeric" value="${state.targetQueue ?? ""}" placeholder="Count people" /></label>
         <label>Waiting for ${escapeHtml(selected.donorId)} · ${escapeHtml(selected.trip.bay)}<input id="donor-queue" type="number" min="0" max="1000" step="1" inputmode="numeric" value="${state.donorQueue ?? ""}" placeholder="Count people" /></label>
@@ -648,7 +692,7 @@ function renderCandidates() {
           : Math.max(0, Math.min(1000, Math.floor(Number(value))));
         state.queueSource = "manual";
         $("queue-result").innerHTML = queueResultMarkup(gap, selected);
-        $("candidates-content").querySelector(".queue-source").textContent = "MANUAL COUNTS · NOT VERIFIED BY APP";
+        $("candidates-content").querySelector(".queue-source").textContent = "Your counts. The app can't check them.";
       });
     }
   }
@@ -857,24 +901,24 @@ function renderRerouteSummary(gap, swap, reroute) {
       : route().serviceType === "campus_shuttle" ? "Route 68 is a campus shuttle, so it is not treated as a substitute for a city route."
         : !gap ? "Pick a scheduled departure in step 02."
           : "No nearby bus qualifies for this selected gap. Try another departure to screen a possible reassignment.";
-    $("reroute").innerHTML = `<div class="reroute-card is-wide"><span class="reroute-eyebrow">SELECTED ROUTE</span>
+    $("reroute").innerHTML = `<div class="reroute-card is-wide"><span class="reroute-eyebrow">Selected route</span>
       <div class="reroute-pair"><span class="chip" style="--route-color:${routeColor(state.route)}">${escapeHtml(state.route)}</span>
         <span><strong>${escapeHtml(route().name)}</strong><small>UBC → ${escapeHtml(shape.end.name)} · ${shape.lengthKm} km${run ? ` · ~${run} min` : ""}</small></span></div></div>
-      <div class="reroute-card"><span class="reroute-eyebrow">PLANNING NOTE</span><p class="reroute-note">${reason}</p></div>`;
+      <div class="reroute-card"><span class="reroute-eyebrow">Planning note</span><p class="reroute-note">${reason}</p></div>`;
     return;
   }
   const target = state.route, donorId = swap.donorId;
   const minutesDiff = reroute.pathRun - reroute.ownRun;
   const offShare = reroute.totalKm ? reroute.offKm / reroute.totalKm * 100 : 0;
   $("reroute").innerHTML = `<div class="reroute-card">
-      <span class="reroute-eyebrow">WHICH BUS IS REROUTED</span>
-      <div class="reroute-pair"><span class="chip is-donor">${escapeHtml(donorId)}</span>
+      <span class="reroute-eyebrow">Which bus is rerouted</span>
+      <div class="reroute-pair"><span class="chip" style="--route-color:${routeColor(donorId)}">${escapeHtml(donorId)}</span>
         <span><strong>${escapeHtml(route(donorId).name)}</strong><small>scheduled ${timeLabel(swap.trip.minute)} from ${escapeHtml(swap.trip.bay)}</small></span></div>
       <div class="reroute-arrow">would instead run ↓</div>
       <div class="reroute-pair"><span class="chip" style="--route-color:${routeColor(target)}">${escapeHtml(target)}</span>
         <span><strong>${escapeHtml(route(target).name)}</strong><small>from ${escapeHtml(gap.first.bay)}</small></span></div>
     </div>
-    <div class="reroute-card"><span class="reroute-eyebrow">MOVES BAYS AT UBC EXCHANGE</span>${bayInset(gap, swap)}</div>
+    <div class="reroute-card"><span class="reroute-eyebrow">Moves bays at UBC Exchange</span>${bayInset(gap, swap)}</div>
     <div class="reroute-card"><dl class="reroute-facts">
       <div><dt>Off its usual path</dt><dd><strong>${reroute.offKm.toFixed(1)} km</strong> of ${reroute.totalKm.toFixed(1)} km
         <span class="reroute-bar" aria-hidden="true"><i style="width:${offShare.toFixed(0)}%"></i></span>
@@ -931,7 +975,7 @@ function renderMap() {
       <g class="map-end is-usual"><circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="8" />
         <text x="${(ox + (endSide === "end" ? -12 : 12)).toFixed(1)}" y="${(oy - 12).toFixed(1)}" text-anchor="${endSide}">${escapeHtml(endText)}</text></g>
       <text class="map-gap-label" x="${(close ? ex : (ex + ox) / 2).toFixed(1)}" y="${(close ? ey + 30 : (ey + oy) / 2 + 22).toFixed(1)}" text-anchor="middle">${reroute.endGapKm.toFixed(1)} km apart</text>
-      ${mapChip(dcx + 24, dcy + 24, swap.donorId, "is-donor")}`;
+      ${mapChip(dcx + 24, dcy + 24, swap.donorId, "is-donor", routeColor(swap.donorId))}`;
     const path = lines[state.route];
     const d = svgPath(path);
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -966,10 +1010,10 @@ function renderMap() {
   renderRerouteSummary(gap, swap, reroute);
   $("map-panel").classList.toggle("has-swap", Boolean(reroute));
   const special = route().serviceType !== "regular";
-  $("map-step").textContent = special ? "SEE THE ROUTE" : "SEE THE REROUTE";
-  $("map-title").textContent = special ? `Where does the ${state.route} go?` : "Where would the nearby bus go?";
+  $("map-step").textContent = special ? "See the route" : "See the reroute";
+  $("map-title").textContent = special ? `Where does the ${state.route} go?` : "Where would the borrowed bus go?";
   $("map-subtitle").textContent = reroute
-    ? `The orange bus normally runs the ${swap.donorId} (dashed orange). To cover the ${state.route} gap at ${timeLabel(swap.trip.minute)}, it would follow the ${state.route} line instead.`
+    ? `The borrowed bus normally runs the ${swap.donorId} (dashed black line). To cover the ${state.route} gap at ${timeLabel(swap.trip.minute)}, it would follow the ${state.route} line instead.`
     : special ? `Published route geometry for ${state.route} from UBC Exchange. No reassignment scenario is shown for this service.`
       : `Select one of the ${map.targetRoutes.length} routes to inspect its path. When step 03 finds a nearby trip, the map shows how far that bus would leave its usual route.`;
 }
@@ -1002,14 +1046,16 @@ async function boot() {
         if (line && line.dataset.mapRoute !== state.route) selectRoute(line.dataset.mapRoute);
       });
     }
+    $("app-loading").hidden = true;
     $("app-content").hidden = false;
     let resizeTimer = null;
     window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderPeriods, 150); });
     const linked = viewFromUrl();
     if (!linked || !openView(linked)) openView(DEFAULT_VIEW);
   } catch (error) {
+    $("app-loading").hidden = true;
     $("app-error").hidden = false;
-    $("app-error").textContent = `The planner could not load its data. Serve this folder with a local web server, then reload. ${error.message}`;
+    $("app-error").innerHTML = `<span>The planner couldn't load its data (${escapeHtml(error.message)}). It needs to be served by a web server, not opened as a file.</span><button type="button" onclick="location.reload()">Try again</button>`;
   }
 }
 

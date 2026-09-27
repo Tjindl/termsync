@@ -2,6 +2,8 @@
 
 From the repository root, run `python3 -m http.server 5173` and open `http://localhost:5173/`. This is a static HTML/CSS/JavaScript app with no build step.
 
+**Design.** Every colour, type size, space and radius is a token at the top of [`styles.css`](styles.css): ink on paper, one teal accent, red only for losses, and colour otherwise reserved for routes and load levels. Use the tokens rather than adding raw values.
+
 The page has 12 selectable routes from UBC Exchange. Ten regular routes (99, R4, 49, 9, 44, 84, 4, 14, 25, 33) support the queue comparison. Route 68 is a [UBC campus shuttle](https://planning.ubc.ca/transportation/transit) and N17 has timetable and map context only. Neither is offered as a city-route donor. Queue counts in step 03 start from a **Monte Carlo student-demand simulation**; they are editable estimates, not observations.
 
 1. Pick a route. For the 10 regular routes, step 01 is a **line chart by hour**. It plots simulated students leaving UBC Exchange on that route each hour (Mon–Fri average, or one weekday) from the team's Monte Carlo model. The dashed line is the capacity of the buses the 2026 timetable runs each hour: the buses scheduled, times the capacity per bus implied by TransLink's 2025 TSPR loads (average peak load ÷ load factor). Each dot is coloured by how full that hour is: red overloaded (100%+), orange crowded (84–99%), yellow moderate (60–83%), green lighter (under 60%). Clicking an hour jumps steps 02–03 to it; the shaded band is the TransLink time block it falls in. The demand is simulated and counts students only, not all riders. Routes 68 and N17 have no simulated demand, so they keep the time-block bar chart of fall 2025 TSPR **average peak passengers on board**.
