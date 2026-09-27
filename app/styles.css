@@ -140,8 +140,7 @@ h1 em { font-style: italic; }
 .route-button:hover { border-color: var(--rule-strong); }
 .route-button[aria-pressed="true"] { border-color: var(--ink); box-shadow: var(--shadow); }
 .route-button[aria-pressed="true"]::before { opacity: 1; }
-.route-number, .chip, .candidate-route, .route-sign { display: inline-grid; place-items: center; flex: none; border-radius: var(--r-sm); background: var(--route-color, var(--ink)); color: var(--on-ink); font-family: var(--font-sign); font-weight: 800; line-height: 1; }
-.route-number { min-width: 58px; height: 50px; padding: 0 var(--s-2); font-size: var(--t-2xl); }
+.route-number, .chip, .candidate-route, .route-number { min-width: 58px; height: 50px; padding: 0 var(--s-2); font-size: var(--t-2xl); }
 .route-info { min-width: 0; }
 .route-info strong { display: block; overflow: hidden; font-size: var(--t-lg); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
 .route-info small { display: block; color: var(--ink-2); font-size: var(--t-sm); }
@@ -151,11 +150,6 @@ h1 em { font-style: italic; }
 .route-spark .spark-capacity { fill: none; stroke: var(--rule-strong); stroke-width: 1; stroke-dasharray: 3 3; }
 .route-peak { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: var(--s-2); color: var(--ink-2); font-size: var(--t-xs); }
 .route-peak b { color: var(--ink); font-weight: 600; }
-.route-others { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
-.route-others > span { margin-right: var(--s-2); color: var(--ink-2); font-size: var(--t-sm); }
-.route-sign { min-width: 40px; height: 32px; padding: 0 var(--s-2); border: 0; font-size: var(--t-lg); transition: box-shadow var(--ease); }
-.route-sign:hover { box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px var(--rule-strong); }
-.route-sign[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink); }
 
 /* ── The answer, set as a departure board ─────────────────────────────────────────────── */
 .answer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--s-4) var(--s-6); margin: var(--s-6) 0; padding: var(--s-5) var(--s-6); border-radius: var(--r-lg); background: var(--board); color: var(--on-ink); box-shadow: var(--shadow); }
@@ -275,6 +269,9 @@ h2 { font-size: var(--t-2xl); }
 .departure[aria-pressed="true"]::before, .departure[aria-pressed="true"]::after { background: var(--amber); }
 .departure.is-next { box-shadow: inset 0 0 0 2px var(--board); }
 .empty-departures { grid-column: 1 / -1; color: var(--ink-2); font-size: var(--t-sm); }
+.departure-variant { color: var(--amber); font-weight: 600; }
+.departure:not([aria-pressed="true"]) .departure-variant { color: var(--accent); }
+.departure-note { grid-column: 1 / -1; color: var(--ink-2); font-size: var(--t-xs); }
 .gap-summary { display: flex; align-items: end; justify-content: space-between; gap: var(--s-4); padding-top: var(--s-4); border-top: var(--hair) solid var(--rule); }
 .gap-label { display: block; margin-bottom: var(--s-1); color: var(--ink-2); font-size: var(--t-sm); }
 .gap-summary strong { font: 500 var(--t-lg) var(--font-data); }

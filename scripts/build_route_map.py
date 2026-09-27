@@ -168,7 +168,7 @@ def main():
             end["name"] = "Dundarave"
         elif route == "N17":
             end["name"] = stop_label(stops[end_id]["stop_name"])
-        shapes_out.append({"route": route, "lengthKm": round(length_km(shape[sid]), 1), "end": end,
+        shapes_out.append({"route": route, "headsign": " ".join(headsign.split()), "lengthKm": round(length_km(shape[sid]), 1), "end": end,
                            "coords": rounded(simplify(shape[sid], 0.00003), 5)})
     by_block = defaultdict(list)
     for tid, t in trips.items():
@@ -216,8 +216,8 @@ def main():
         counts = Counter(index[trip_shapes[t["tripId"]]] for t in planner["routes"][route]["departures"] if t["tripId"] in trip_shapes)
         main_shape[route] = counts.most_common(1)[0][0]
 
-    uses = Counter(record[0] for record in trips_out.values())
-    everything = [p for i, s in enumerate(shapes_out) if uses[i] >= 5 for p in s["coords"]]  # rare variants may run off the map
+    # Every departure shape, including rare variants such as the peak 44 Dundarave Express, gets background streets.
+    everything = [p for s in shapes_out for p in s["coords"]]
     view = [min(p[0] for p in everything) - 0.01, min(p[1] for p in everything) - 0.01,
             max(p[0] for p in everything) + 0.01, max(p[1] for p in everything) + 0.01]
     box = [view[0] - 0.02, view[1] - 0.015, view[2] + 0.02, view[3] + 0.015]

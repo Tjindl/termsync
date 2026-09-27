@@ -174,8 +174,8 @@ function selectHour(hour) {
   render();
 }
 
-// The three corridors this planner is about come first; the other UBC Exchange routes follow as small
-// destination signs. They can still be picked, and they supply the buses that could be redirected.
+// The three corridors this planner is about are the only ones in the route picker. The other UBC Exchange
+// routes supply the buses that could be redirected, and a ?route= link still opens them.
 const FOCUS_ROUTES = ["99", "R4", "49"];
 
 function routeDetail(info) {
@@ -211,7 +211,6 @@ function routeSparkline(id) {
 function renderRoutes() {
   const ids = state.data.targetRoutes;
   const focus = FOCUS_ROUTES.filter((id) => ids.includes(id));
-  const others = ids.filter((id) => !focus.includes(id));
   const destination = (id) => state.map?.shapes[state.map.mainShape[id]]?.end.name.replace(" Station", "");
   $("route-nav").innerHTML = `<div class="route-focus">${focus.map((id) => {
     const spark = routeSparkline(id);
@@ -220,9 +219,7 @@ function renderRoutes() {
       <span class="route-info"><strong>${escapeHtml(route(id).name)}</strong><small>${destination(id) ? `UBC → ${escapeHtml(destination(id))}` : routeDetail(route(id))}</small></span>
       ${spark ? `${spark.svg}<span class="route-peak"><span>Fullest hour <b>${String(spark.peak).padStart(2, "0")}:00</b></span><span><b>${spark.load}%</b> of capacity · ${escapeHtml(weekdayLabel())}</span></span>` : ""}
     </button>`;
-  }).join("")}</div>
-    <div class="route-others" role="group" aria-label="Other routes from UBC Exchange"><span>Other routes from UBC Exchange</span>${others.map((id) => `<button class="route-sign" type="button" data-route="${escapeHtml(id)}" aria-pressed="${id === state.route}"
-      style="--route-color:${routeColor(id)}" title="${escapeHtml(route(id).name)}" aria-label="Route ${escapeHtml(id)}, ${escapeHtml(route(id).name)}: ${routeDetail(route(id))}">${escapeHtml(id)}</button>`).join("")}</div>`;
+  }).join("")}</div>`;
   $("route-nav").querySelectorAll("[data-route]").forEach((button) => button.addEventListener("click", () => selectRoute(button.dataset.route)));
 }
 
@@ -429,7 +426,10 @@ function renderSchedule() {
   $("hour-tabs").querySelectorAll("[data-hour]").forEach((button) => button.addEventListener("click", () => selectHour(Number(button.dataset.hour))));
   const trips = departures().filter((trip) => trip.minute >= state.hour && trip.minute < state.hour + 60);
   const closing = selectedGap()?.next.tripId;  // the departure that closes the selected gap
-  $("departure-list").innerHTML = trips.length ? trips.map((trip) => `<button class="departure${trip.tripId === closing ? " is-next" : ""}" type="button" data-trip="${escapeHtml(trip.tripId)}" aria-pressed="${trip.tripId === state.tripId}" aria-label="Scheduled departure ${timeLabel(trip.minute)}, ${escapeHtml(trip.bay)}">${timeLabel(trip.minute)}</button>`).join("")
+  const signs = new Map(trips.map((trip) => [trip.tripId, tripSign(state.route, trip.tripId)]));
+  const variants = [...new Map([...signs.values()].filter((sign) => sign?.variant).map((sign) => [sign.label, sign])).values()];
+  const variantNote = variants.length ? `<p class="departure-note">${variants.map((sign) => `* Runs as the ${escapeHtml(sign.label)}, ending at ${escapeHtml(sign.end)}.`).join(" ")}</p>` : "";
+  $("departure-list").innerHTML = trips.length ? trips.map((trip) => `<button class="departure${trip.tripId === closing ? " is-next" : ""}" type="button" data-trip="${escapeHtml(trip.tripId)}" aria-pressed="${trip.tripId === state.tripId}" aria-label="Scheduled departure ${timeLabel(trip.minute)}, ${escapeHtml(trip.bay)}${signs.get(trip.tripId)?.variant ? `, runs as the ${escapeHtml(signs.get(trip.tripId).label)}` : ""}">${timeLabel(trip.minute)}${signs.get(trip.tripId)?.variant ? `<span class="departure-variant" aria-hidden="true">*</span>` : ""}</button>`).join("") + variantNote
     : `<p class="empty-departures">No scheduled departures in this hour.</p>`;
   $("departure-list").querySelectorAll("[data-trip]").forEach((button) => button.addEventListener("click", () => { state.tripId = button.dataset.trip; state.candidateId = null; clearQueueCounts(); renderSchedule(); renderCandidates(); }));
   const gap = selectedGap();
@@ -736,7 +736,7 @@ function renderCandidates() {
     const cautionNote = selected.cautions.length
       ? `<ul class="queue-cautions">${selected.cautions.map((text) => `<li>${escapeHtml(text)}</li>`).join("")}</ul>` : "";
     $("bus-pick").innerHTML = `${examples}<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
-      <span class="candidate-top"><span class="candidate-route" style="--route-color:${routeColor(candidate.donorId)}">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">Move the ${escapeHtml(candidate.donorId)} at ${timeLabel(candidate.trip.minute)}</span><span class="candidate-time">${escapeHtml(candidate.trip.bay)} → ${escapeHtml(gap.first.bay)} · ${candidate.distance} m</span></span></span>
+      <span class="candidate-top"><span class="candidate-route" style="--route-color:${routeColor(candidate.donorId)}">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">Move the ${escapeHtml(candidate.donorId)} at ${timeLabel(candidate.trip.minute)}</span><span class="candidate-time">${escapeHtml(candidate.trip.bay)} → ${escapeHtml(gap.first.bay)} · ${candidate.distance} m${tripSign(candidate.donorId, candidate.trip.tripId)?.variant ? `<br />usually the ${escapeHtml(tripSign(candidate.donorId, candidate.trip.tripId).label)}` : ""}</span></span></span>
       <span class="candidate-divider"></span><span class="candidate-facts"><span>${candidate.cautions.length ? `${candidate.cautions.length} ${candidate.cautions.length === 1 ? "caution" : "cautions"}` : "Clean fit"}</span><span>${candidate.reroute.offKm.toFixed(1)} km off path</span></span>
       ${candidate.simulatedGain === null ? "" : `<span class="candidate-sim ${candidate.simulatedGain < 0 ? "is-negative" : ""}">Simulated: ${candidate.simulatedGain === 0 ? "no wait change"
         : `${candidate.simulatedGain < 0 ? "adds" : "saves"} ${Math.abs(candidate.simulatedGain).toLocaleString()} passenger-min`}</span>`}
@@ -842,6 +842,18 @@ function labelSide(x, text, prefer) {
   if (prefer === "start" && x + width > MAP.width - 6) return "end";
   if (prefer === "end" && x - width < 6) return "start";
   return prefer;
+}
+
+/**
+ * The destination sign a trip runs under (e.g. "44 Dundarave Express"), and whether it differs from
+ * its route's usual trip. Peak 44s, for example, continue past downtown to Dundarave.
+ */
+function tripSign(routeId, tripId) {
+  const record = state.map?.trips[tripId];
+  if (!record) return null;
+  const shape = state.map.shapes[record[0]], usual = state.map.shapes[state.map.mainShape[routeId]];
+  const label = (shape.headsign || routeId).replace("/To ", " to ");
+  return { label, variant: Boolean(shape.headsign && usual?.headsign && shape.headsign !== usual.headsign), end: shape.end.name };
 }
 
 function routeColor(id) { return ROUTE_COLORS[id] || "var(--ink)"; }
@@ -951,17 +963,19 @@ function bayInset(gap, swap) {
   const box = [Math.min(...all.map((b) => b.lon)), Math.min(...all.map((b) => b.lat)), Math.max(...all.map((b) => b.lon)), Math.max(...all.map((b) => b.lat))];
   const p = mapProjector(box, { x: 0, y: 8, width: INSET.width, height: INSET.height - 8, pad: 22 });
   const target = bays.get(gap.first.bay), donor = bays.get(swap.trip.bay);
+  const [x1, y1] = p.xy([donor.lon, donor.lat]), [x2, y2] = p.xy([target.lon, target.lat]);
   const dot = (b) => {
     const [x, y] = p.xy([b.lon, b.lat]);
     const role = b === target ? "is-target" : b === donor ? "is-donor" : "";
+    // Each label sits on the outer side of its bay, so close bays never have crossing labels.
+    const left = role && (b === target ? x <= x1 : x < x2);
     return `<g class="bay ${role}"${role === "is-target" ? ` style="--route-line:${routeColor(state.route)}"` : ""}><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${role ? 7 : 4}" />
-      ${role ? `<text x="${(x + (role === "is-donor" ? -10 : 10)).toFixed(1)}" y="${(y - 11).toFixed(1)}" text-anchor="${role === "is-donor" ? "end" : "start"}">${escapeHtml(b.bay)}</text>` : ""}</g>`;
+      ${role ? `<text x="${(x + (left ? -10 : 10)).toFixed(1)}" y="${(y - 11).toFixed(1)}" text-anchor="${left ? "end" : "start"}">${escapeHtml(b.bay)}</text>` : ""}</g>`;
   };
-  const [x1, y1] = p.xy([donor.lon, donor.lat]), [x2, y2] = p.xy([target.lon, target.lat]);
   return `<svg class="bay-inset" viewBox="0 0 ${INSET.width} ${INSET.height}" role="img" aria-label="UBC Exchange: the bus moves from ${escapeHtml(donor.bay)} to ${escapeHtml(target.bay)}, ${swap.distance} metres.">
     <line class="bay-link" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" />
     ${all.filter((b) => b !== target && b !== donor).map(dot).join("")}${[donor, target].map(dot).join("")}
-    <text class="bay-distance" x="${((x1 + x2) / 2).toFixed(1)}" y="${((y1 + y2) / 2 + 17).toFixed(1)}">${swap.distance} m</text></svg>`;
+    <text class="bay-distance" x="${((x1 + x2) / 2).toFixed(1)}" y="${(Math.max(y1, y2) + 22).toFixed(1)}">${swap.distance} m</text></svg>`;
 }
 
 function renderRerouteSummary(gap, swap, reroute) {
@@ -972,7 +986,7 @@ function renderRerouteSummary(gap, swap, reroute) {
     const run = selectedTrip ? selectedTrip[1] : typicalRun(state.route);
     const reason = route().serviceType === "nightbus" ? "N17 is shown for schedule and path context. No load-based swap is proposed."
       : route().serviceType === "campus_shuttle" ? "Route 68 is a campus shuttle, so it is not treated as a substitute for a city route."
-        : !gap ? "Pick a scheduled departure in step 02."
+        : !gap ? "Pick a scheduled departure in step 2."
           : "No nearby bus qualifies for this selected gap. Try another departure to screen a possible reassignment.";
     $("reroute").innerHTML = `<div class="reroute-card is-wide"><span class="reroute-eyebrow">Selected route</span>
       <div class="reroute-pair"><span class="chip" style="--route-color:${routeColor(state.route)}">${escapeHtml(state.route)}</span>
@@ -986,10 +1000,10 @@ function renderRerouteSummary(gap, swap, reroute) {
   $("reroute").innerHTML = `<div class="reroute-card">
       <span class="reroute-eyebrow">Which bus is rerouted</span>
       <div class="reroute-pair"><span class="chip" style="--route-color:${routeColor(donorId)}">${escapeHtml(donorId)}</span>
-        <span><strong>${escapeHtml(route(donorId).name)}</strong><small>scheduled ${timeLabel(swap.trip.minute)} from ${escapeHtml(swap.trip.bay)}</small></span></div>
+        <span><strong>${escapeHtml(route(donorId).name)}</strong><small>scheduled ${timeLabel(swap.trip.minute)} from ${escapeHtml(swap.trip.bay)}${tripSign(donorId, swap.trip.tripId)?.variant ? ` · runs as the ${escapeHtml(tripSign(donorId, swap.trip.tripId).label)}` : ""}</small></span></div>
       <div class="reroute-arrow">would instead run ↓</div>
       <div class="reroute-pair"><span class="chip" style="--route-color:${routeColor(target)}">${escapeHtml(target)}</span>
-        <span><strong>${escapeHtml(route(target).name)}</strong><small>from ${escapeHtml(gap.first.bay)}</small></span></div>
+        <span><strong>${escapeHtml(route(target).name)}</strong><small>from ${escapeHtml(gap.first.bay)}${tripSign(target, gap.first.tripId)?.variant ? ` · as the ${escapeHtml(tripSign(target, gap.first.tripId).label)}` : ""}</small></span></div>
     </div>
     <div class="reroute-card"><span class="reroute-eyebrow">Moves bays at UBC Exchange</span>${bayInset(gap, swap)}</div>
     <div class="reroute-card"><dl class="reroute-facts">
@@ -1018,7 +1032,8 @@ function renderMap() {
 
   const network = map.network.map((line) => svgPath(line.map(p.xy))).join("");
   const rail = map.skytrain.map((line) => `<path class="map-rail" d="${svgPath(line.coords.map(p.xy))}" />`).join("");
-  const order = [...map.targetRoutes.filter((id) => id !== state.route), state.route];  // selected route drawn last, on top
+  const shown = [...new Set([...FOCUS_ROUTES, state.route])].filter((id) => map.mainShape[id] !== undefined);
+  const order = [...shown.filter((id) => id !== state.route), state.route];  // selected route drawn last, on top
   const lines = {};
   const routes = order.map((id) => {
     const points = lines[id] = offsetPoints(shapeFor(id).coords.map(p.xy), MAP_OFFSET[id] || 0);
@@ -1031,6 +1046,12 @@ function renderMap() {
   }).join("");
 
   let overlay = "", bus = "";
+  if (!reroute && shapeFor(state.route)) {
+    const end = shapeFor(state.route).end, [tx, ty] = p.xy([end.lon, end.lat]);
+    const text = `${state.route} ends: ${end.name.replace(" Station", "")}`, side = labelSide(tx, text, "start");
+    overlay = `<g class="map-end is-covered" style="--route-line:${routeColor(state.route)}"><circle cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="9" />
+      <text x="${(tx + (side === "end" ? -14 : 14)).toFixed(1)}" y="${(ty + 20).toFixed(1)}" text-anchor="${side}">${escapeHtml(text)}</text></g>`;
+  }
   if (reroute) {
     const own = offsetPoints(reroute.own.coords.map(p.xy), DONOR_OFFSET);
     const ownD = svgPath(own);
@@ -1042,9 +1063,12 @@ function renderMap() {
     const usualLeft = ox < ex;
     const endText = `Usual end: ${reroute.own.end.name.replace(" Station", "")}`;
     const endSide = labelSide(ox, endText, usualLeft ? "end" : "start");
+    const coveredText = `${state.route} ends: ${reroute.path.end.name.replace(" Station", "")}`;
+    const coveredSide = labelSide(ex, coveredText, usualLeft ? "start" : "end");
     overlay = `<path class="map-donor-casing" d="${ownD}" /><path class="map-donor" d="${ownD}" />
       <line class="map-end-gap" x1="${ex.toFixed(1)}" y1="${ey.toFixed(1)}" x2="${ox.toFixed(1)}" y2="${oy.toFixed(1)}" />
-      <g class="map-end is-covered" style="--route-line:${routeColor(state.route)}"><circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="9" /></g>
+      <g class="map-end is-covered" style="--route-line:${routeColor(state.route)}"><circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="9" />
+        <text x="${(ex + (coveredSide === "end" ? -14 : 14)).toFixed(1)}" y="${(ey + 20).toFixed(1)}" text-anchor="${coveredSide}">${escapeHtml(coveredText)}</text></g>
       <g class="map-end is-usual"><circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="8" />
         <text x="${(ox + (endSide === "end" ? -12 : 12)).toFixed(1)}" y="${(oy - 12).toFixed(1)}" text-anchor="${endSide}">${escapeHtml(endText)}</text></g>
       <text class="map-gap-label" x="${(close ? ex : (ex + ox) / 2).toFixed(1)}" y="${(close ? ey + 30 : (ey + oy) / 2 + 22).toFixed(1)}" text-anchor="middle">${reroute.endGapKm.toFixed(1)} km apart</text>
@@ -1071,7 +1095,7 @@ function renderMap() {
   const bar = 2 * p.pxPerKm;
   const label = reroute
     ? `Map: the ${swap.donorId} bus from ${swap.trip.bay} would run route ${state.route} to ${reroute.path.end.name} instead of its usual trip to ${reroute.own.end.name}; ${reroute.offKm.toFixed(1)} km off its usual path, ending ${reroute.endGapKm.toFixed(1)} km from its usual end.`
-    : `Map of routes ${map.targetRoutes.join(", ")} leaving UBC Exchange: ${map.targetRoutes.map((id) => `${id} to ${shapeFor(id).end.name}`).join("; ")}.`;
+    : `Map of routes ${shown.join(", ")} leaving UBC Exchange: ${shown.map((id) => `${id} to ${shapeFor(id).end.name}`).join("; ")}.`;
   $("route-map").innerHTML = `<svg id="map-svg" viewBox="0 0 ${MAP.width} ${frame.height}" role="img" aria-label="${escapeHtml(label)}">
     <path class="map-network" d="${network}" />${rail}${routes}${overlay}${stations}
     <g class="map-ubc"><circle cx="${ux.toFixed(1)}" cy="${uy.toFixed(1)}" r="10" /><circle class="map-ubc-core" cx="${ux.toFixed(1)}" cy="${uy.toFixed(1)}" r="3.5" />
@@ -1079,16 +1103,16 @@ function renderMap() {
     <g class="map-scale" transform="translate(28,${frame.height - 22})"><path d="M0 -5V5M0 0H${bar.toFixed(1)}M${bar.toFixed(1)} -5V5" /><text x="${(bar + 8).toFixed(1)}" dy="0.35em">2 km</text></g>
     <g class="map-north" transform="translate(${MAP.width - 30},32)"><path d="M0 -13L6 4L0 0L-6 4Z" /><text y="18" text-anchor="middle">N</text></g>
   </svg>`;
-  $("map-legend-routes").innerHTML = map.targetRoutes.map((id) => `<span><i class="key-line" style="background:${routeColor(id)}"></i>${escapeHtml(id)}</span>`).join("");
+  $("map-legend-routes").innerHTML = order.map((id) => `<span><i class="key-line" style="background:${routeColor(id)}"></i>${escapeHtml(id)}</span>`).join("");
   renderRerouteSummary(gap, swap, reroute);
   $("map-panel").classList.toggle("has-swap", Boolean(reroute));
   const special = route().serviceType !== "regular";
   $("map-step").textContent = special ? "See the route" : "Pick a bus";
   $("map-title").textContent = special ? `Where does the ${state.route} go?` : "Which bus could fill the gap?";
   $("map-subtitle").textContent = reroute
-    ? `The borrowed bus normally runs the ${swap.donorId} (dashed black line). To cover the ${state.route} gap at ${timeLabel(swap.trip.minute)}, it would follow the ${state.route} line instead.`
+    ? `The borrowed bus normally runs the ${tripSign(swap.donorId, swap.trip.tripId)?.variant ? tripSign(swap.donorId, swap.trip.tripId).label : swap.donorId} (dashed black line). To cover the ${state.route} gap at ${timeLabel(swap.trip.minute)}, it would follow the ${state.route} line instead.`
     : special ? `Published route geometry for ${state.route} from UBC Exchange. No reassignment scenario is shown for this service.`
-      : `Select one of the ${map.targetRoutes.length} routes to inspect its path. When step 03 finds a nearby trip, the map shows how far that bus would leave its usual route.`;
+      : `The ${state.route} line and where it ends. When a nearby bus could fill the gap, pick it above to see how far it would leave its usual route.`;
 }
 
 function render() {

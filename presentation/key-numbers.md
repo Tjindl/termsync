@@ -77,7 +77,7 @@ Images are exported at 2× resolution.
 | `01-overview-r4-thu-1800.png` | The whole page at the crunch |
 | `02-hourly-r4-thursday.png` | R4 students by hour against scheduled capacity; 18:00 at 97% |
 | `03-options-r4-thu-1800.png` | Redirect vs add a trip vs leave it |
-| `04-map-redirect-r4-thu-1800.png` | Where a redirected 99 would go |
+| `04-map-redirect-r4-thu-1800.png` | Where a redirected 99 would go. The 18:06 99 is a Boundary Loop trip, so its usual end is Boundary Rd, not Commercial–Broadway |
 | `05-hourly-49-tuesday.png` | 49 hourly, Tuesday |
 | `06-options-49-tue-1800.png` | 49 comparison, Tuesday 18:48 |
 | `07-hourly-99-thursday.png` | 99 hourly, Thursday; never above 72% of scheduled capacity |
