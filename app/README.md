@@ -4,9 +4,22 @@ From the repository root, run `python3 -m http.server 5173` and open `http://loc
 
 The page has 12 selectable routes from UBC Exchange. Ten regular routes (99, R4, 49, 9, 44, 84, 4, 14, 25, 33) support the queue comparison. Route 68 is a [UBC campus shuttle](https://planning.ubc.ca/transportation/transit) and N17 has timetable and map context only. Neither is offered as a city-route donor. The two buttons in step 03 load **illustrative**, editable queue counts; they are not observations.
 
-1. Pick a route. Step 01 ranks fall 2025 weekday time blocks by TransLink TSPR **average peak passengers on board**. This is measured at the busiest point along the entire route, not at UBC Exchange.
+1. Pick a route. Step 01 charts fall 2025 weekday time blocks along the hour axis by TransLink TSPR **average peak passengers on board**. Each bar is as wide as its block and coloured by load: red overloaded (100%+), orange crowded (84–99%), yellow moderate (60–83%), green lighter (under 60%). This is measured at the busiest point along the entire route, not at UBC Exchange.
 2. Pick a time block, hour, and departure on the 2026-09-28 TransLink GTFS timetable. Step 02 shows the gap to the next departure. The historical load and timetable are from different years and are not matched observations.
-3. Step 03 searches other regular routes for a departure inside a gap of at most 60 minutes. A candidate's bay must be within 250 m straight-line of the target bay. Its previous GTFS vehicle-block trip must end within 500 m of the target bay at least five minutes beforehand. No more than a third of the covered trip can lie farther than 80 m from the donor's usual path, and the rerouted destination must be within 5 km of its usual destination. If the block has a next passenger trip, the covered trip must finish at least five minutes before it and within 500 m of its start. These are screening rules for the demo, not TransLink operating rules.
+3. Step 03 searches other regular routes for a departure inside a gap of 4–60 minutes. **Hard rules** decide whether the move is possible at all:
+   - the bus leaves from a bay within 250 m straight-line of the target bay
+   - its previous GTFS vehicle-block trip ends within 500 m of that bay at least five minutes earlier, or this is its first trip of the day
+   - electric trolley buses (4, 9, 14) only cover other trolley routes
+   - if its block has a next passenger trip, it can still reach it with five minutes' recovery; when the covered trip ends more than 500 m from that trip's start, this allows an empty run of 1.3 × the straight-line distance at 25 km/h
+
+   **Soft rules** describe fit. Breaking one adds a caution and ranks the bus lower, instead of hiding it, so the busiest blocks still show the least-bad buses to redirect:
+   - more than a third of the covered trip is over 80 m from the donor's usual path
+   - it finishes more than 5 km from its usual end
+   - it needs an empty run
+   - it's the bus's first trip of the day
+   - its own route averaged 84%+ peak load in that block
+
+   Options are ranked by fewest cautions, then the most even target gap, and each route appears at most once. All thresholds are in `SCREEN` in `app.js`. These are screening rules for the demo, not TransLink operating rules.
 4. Enter how many people are **currently waiting** at the two bays. The displayed bay-only wait calculation is `target queue × (next target departure − rerouted departure) − donor queue × (next donor departure − removed donor departure)`. A positive result means less waiting for those entered queues; a negative result means more. Moving a donor bus changes its own maximum departure gap, which is shown alongside the target gap. Counts reset when you change the route or time.
 5. Step 04 maps the donor's usual route and the route it would cover, with the bay change and destination difference. It shows the next published trip when one appears in the GTFS block. A blank next trip does not prove the bus or driver is free; depot movement and shifts are unknown.
 

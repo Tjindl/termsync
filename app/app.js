@@ -82,7 +82,7 @@ function bestCandidateGap(routeId, code, restrictHour = null) {
     const candidate = options[0];
     const benefit = candidate.targetBefore - candidate.targetAfter;
     const donorPenalty = candidate.donorAfter - candidate.donorBefore;
-    const score = benefit * 100 - donorPenalty;
+    const score = benefit * 100 - donorPenalty - candidate.cautions.length * 10000;  // cleanest fit first
     if (!best || score > best.score) best = { tripId: first.tripId, hour: Math.floor(first.minute / 60) * 60, score };
   }
   return best;
@@ -160,32 +160,56 @@ function renderRoutes() {
   $("route-nav").querySelectorAll("[data-route]").forEach((button) => button.addEventListener("click", () => selectRoute(button.dataset.route)));
 }
 
+// Step 01 chart: one vertical bar per time block along the hour axis, each as wide as the block is long,
+// coloured by its 2025 load level.
+const LOAD_LEVELS = [
+  { key: "overloaded", label: "Overloaded", range: "100%+" },
+  { key: "crowded", label: "Crowded", range: "84–99%" },
+  { key: "moderate", label: "Moderate", range: "60–83%" },
+  { key: "lighter", label: "Lighter", range: "under 60%" },
+];
+
+function hourTick(minute) {
+  return String(Math.floor(minute / 60) % 24).padStart(2, "0");
+}
+
 function renderPeriods() {
   const scheduleOnly = route().serviceType === "nightbus";
   $("pressure-title").textContent = scheduleOnly ? "When does it run?" : "When is it busiest?";
-  $("pressure-subtitle").textContent = scheduleOnly ? "Scheduled departures on the sample service day" : "Ranked by average highest on-board count";
+  $("pressure-subtitle").textContent = scheduleOnly ? "Scheduled departures by time of day" : "Average highest on-board count, by time of day";
   $("pressure-source").textContent = scheduleOnly ? "2026 SCHEDULE" : "2025 HISTORY";
   $("pressure-source").className = scheduleOnly ? "source-tag schedule-tag" : "source-tag";
   $("pressure-note").textContent = scheduleOnly
     ? "These are scheduled departures after midnight on the following calendar day. No comparable historical load series is available here."
-    : "Each bar is the average busiest point along the full route. It is not a count at UBC Exchange.";
-  const values = state.data.timeBlocks.filter((item) => scheduleOnly
-    ? departures().some((trip) => trip.minute >= item.start && trip.minute < item.end)
-    : measure(state.route, item.code) && departures().some((trip) => trip.minute >= item.start && trip.minute < item.end))
-    .map((item) => scheduleOnly
-      ? { block: item, count: departures().filter((trip) => trip.minute >= item.start && trip.minute < item.end).length }
-      : { block: item, ...measure(state.route, item.code) })
-    .sort((a, b) => scheduleOnly ? b.count - a.count : b.peakOnboard - a.peakOnboard);
-  const max = Math.max(1, ...values.map((item) => scheduleOnly ? item.count : item.peakOnboard));
-  $("period-list").innerHTML = values.map((item) => {
-    const status = scheduleOnly ? null : pressureStatus(item.loadPercent);
-    return `<button class="period-row ${status?.high ? "is-high" : ""}" type="button" data-block="${item.block.code}" aria-pressed="${item.block.code === state.block}">
-      <span class="period-time">${item.block.label}</span>
-      <span class="bar-track"><span class="bar-fill" style="width:${Math.max(3, (scheduleOnly ? item.count : item.peakOnboard) / max * 100)}%"></span></span>
-      <span class="period-value">${scheduleOnly ? `${item.count} buses` : `${Math.round(item.peakOnboard)} ppl`}</span>
-      <span class="period-state">${scheduleOnly ? "scheduled" : status.short}</span>
+    : "Each bar is the average busiest point along the full route, not a count at UBC Exchange. Click a bar to pick that time block.";
+  const inBlock = (item) => (trip) => trip.minute >= item.start && trip.minute < item.end;
+  const values = state.data.timeBlocks.filter((item) => departures().some(inBlock(item))).map((item) => {
+    const history = measure(state.route, item.code);
+    const count = departures().filter(inBlock(item)).length;
+    return { block: item, count, value: scheduleOnly ? count : history?.peakOnboard ?? null, load: history?.loadPercent ?? null };
+  });
+  const max = Math.max(1, ...values.map((item) => item.value ?? 0));
+  const bars = values.map((item, index) => {
+    const status = !scheduleOnly && item.load !== null ? pressureStatus(item.load) : null;
+    const usable = item.value !== null;
+    const label = scheduleOnly ? `${item.block.label}: ${item.count} scheduled departures`
+      : usable ? `${item.block.label}: about ${Math.round(item.value)} people on board at the busiest point, ${Math.round(item.load)}% load, ${status.label.toLowerCase()}`
+        : `${item.block.label}: no 2025 load data`;
+    const edge = index === 0 ? " is-first" : index === values.length - 1 ? " is-last" : "";
+    return `<button class="block-bar ${status ? `is-${status.short}` : scheduleOnly ? "is-schedule" : "is-empty"}${edge}" type="button" data-block="${item.block.code}"
+        aria-pressed="${item.block.code === state.block}" aria-label="${escapeHtml(label)}" style="flex-grow:${(item.block.end - item.block.start) / 60}"${usable ? "" : " disabled"}>
+      <span class="block-column"><span class="block-fill" style="height:${usable ? Math.max(3, item.value / max * 100) : 0}%"><span class="block-value">${usable ? Math.round(item.value) : "–"}</span></span></span>
+      <span class="block-hours">${hourTick(item.block.start)}</span>
+      <span class="block-tip" aria-hidden="true">${escapeHtml(label)}</span>
     </button>`;
   }).join("");
+  const lastEnd = values.length ? hourTick(values[values.length - 1].block.end) : "";
+  $("period-list").innerHTML = `<div class="block-chart">
+      <span class="block-unit">${scheduleOnly ? "buses" : "people on board"}</span>
+      <div class="block-plot">${bars}<span class="block-end-tick" aria-hidden="true">${lastEnd}</span></div>
+      <span class="block-axis">Hour of day</span>
+      ${scheduleOnly ? "" : `<div class="block-legend">${LOAD_LEVELS.map((level) => `<span><i class="block-swatch is-${level.key}"></i>${level.label} <small>${level.range}</small></span>`).join("")}</div>`}
+    </div>`;
   $("period-list").querySelectorAll("[data-block]").forEach((button) => button.addEventListener("click", () => selectBlock(Number(button.dataset.block))));
 }
 
@@ -210,33 +234,67 @@ function renderSchedule() {
     : `<div><span class="gap-label">Select a departure</span><strong>See its next scheduled bus</strong></div>`;
 }
 
-function queueCandidatesForGap(gap) {
+// Screening rules for moving a scheduled bus into another route's gap. Hard rules decide whether the move
+// is possible at all: the bus is at UBC, leaves inside the gap from a nearby bay, and can still reach its
+// next published trip. Soft rules describe how good a fit it is; breaking one adds a caution and ranks the
+// bus lower instead of hiding it, so the busiest periods still show the least-bad buses to redirect.
+const SCREEN = {
+  minGapMinutes: 4,
+  maxBayMetres: 250,
+  layoverMinutes: 5,          // its previous trip ends at least this long before it leaves...
+  previousEndMetres: 500,     // ...and this close to the target bay, so the bus is really at UBC
+  recoveryMinutes: 5,         // before its next published trip
+  emptyRunKmh: 25,            // an empty bus reaching that next trip from a different end point
+  roadFactor: 1.3,            // road distance ≈ 1.3 × straight line
+  maxOffRouteShare: 1 / 3,    // soft: more of the covered trip than this off the bus's usual path
+  maxEndGapKm: 5,             // soft: finishes farther than this from its usual end
+  // Electric trolley buses need overhead wire and can't pass one another, so they only cover other
+  // trolley routes; the 99, R4, 49 and other diesel routes are off the wire.
+  trolleyRoutes: ["4", "9", "14"],
+};
+
+function queueCandidatesForGap(gap, rules = SCREEN) {
   if (!gap || !state.map || !state.duties || route().serviceType !== "regular") return [];
   const gapLength = gap.next.minute - gap.first.minute;
-  if (gapLength < 4 || gapLength > MAX_FILLABLE_GAP) return [];
+  if (gapLength < rules.minGapMinutes || gapLength > MAX_FILLABLE_GAP) return [];
   const result = [];
   for (const [donorId, donor] of Object.entries(state.data.routes)) {
     if (donorId === state.route || donor.serviceType !== "regular") continue;
+    if (rules.trolleyRoutes.includes(donorId) && !rules.trolleyRoutes.includes(state.route)) continue;
     for (let i = 1; i < donor.departures.length - 1; i++) {
       const trip = donor.departures[i];
       if (trip.minute <= gap.first.minute || trip.minute >= gap.next.minute) continue;
       const distance = distanceMetres(gap.first, trip);
-      if (distance > 250) continue;
+      if (distance > rules.maxBayMetres) continue;
       const duty = state.duties.trips[trip.tripId];
-      if (!duty?.previous) continue;
-      const [previousEnd, previousLat, previousLon] = duty.previous;
-      if (trip.minute - previousEnd < 5 || distanceMetres({ lat: previousLat, lon: previousLon }, gap.first) > 500) continue;
+      if (!duty) continue;
+      if (duty.previous) {  // it arrives at UBC on an earlier trip; with none, its day starts here
+        const [previousEnd, previousLat, previousLon] = duty.previous;
+        if (trip.minute - previousEnd < rules.layoverMinutes || distanceMetres({ lat: previousLat, lon: previousLon }, gap.first) > rules.previousEndMetres) continue;
+      }
       const candidate = { id: `${donorId}:${trip.tripId}`, donorId, trip, distance };
       const reroute = rerouteFor(gap, candidate);
-      if (!reroute || reroute.offKm / reroute.totalKm > 1 / 3 || reroute.endGapKm > 5) continue;
+      if (!reroute) continue;
       const expectedEnd = trip.minute + reroute.pathRun;
-      if (duty.next) {
+      let emptyRunKm = 0, spareMinutes = null;
+      if (duty.next) {  // it must still make its next published trip, with an empty run if that starts elsewhere
         const [nextStart, nextLat, nextLon] = duty.next;
-        if (nextStart - expectedEnd < 5 || distanceMetres(reroute.path.end, { lat: nextLat, lon: nextLon }) > 500) continue;
+        const apartKm = distanceMetres(reroute.path.end, { lat: nextLat, lon: nextLon }) / 1000;
+        emptyRunKm = apartKm > 0.5 ? apartKm * rules.roadFactor : 0;
+        spareMinutes = nextStart - expectedEnd - rules.recoveryMinutes - emptyRunKm / rules.emptyRunKmh * 60;
+        if (spareMinutes < 0) continue;
       }
+      const cautions = [];
+      if (!duty.previous) cautions.push("This is its first trip of the day; confirm it reaches UBC early.");
+      const offShare = reroute.offKm / reroute.totalKm;
+      if (offShare > rules.maxOffRouteShare) cautions.push(`${Math.round(offShare * 100)}% of the trip is off its usual path; check the driver knows the ${state.route}.`);
+      if (reroute.endGapKm > rules.maxEndGapKm) cautions.push(`It finishes ${reroute.endGapKm.toFixed(1)} km from its usual end.`);
+      if (emptyRunKm) cautions.push(`It needs an empty run of about ${emptyRunKm.toFixed(1)} km to its next trip.`);
+      const donorLoad = measure(donorId)?.loadPercent;
+      if (donorLoad >= 84) cautions.push(`Its own route averaged ${Math.round(donorLoad)}% peak load in this 2025 time block, so crowded stops farther along it may lose a bus.`);
       const previousDonor = donor.departures[i - 1], nextDonor = donor.departures[i + 1];
       result.push({
-        ...candidate, duty, reroute, expectedEnd,
+        ...candidate, duty, reroute, expectedEnd, emptyRunKm, spareMinutes, cautions,
         targetBefore: gapLength,
         targetAfter: Math.max(trip.minute - gap.first.minute, gap.next.minute - trip.minute),
         donorBefore: Math.max(trip.minute - previousDonor.minute, nextDonor.minute - trip.minute),
@@ -245,8 +303,11 @@ function queueCandidatesForGap(gap) {
       });
     }
   }
-  result.sort((a, b) => a.targetAfter - b.targetAfter || a.donorAfter - b.donorAfter || a.distance - b.distance);
-  return result.slice(0, 3);
+  // Best fit first: fewest cautions, then the most even target gap, the least harm to the donor, the nearest bay.
+  result.sort((a, b) => a.cautions.length - b.cautions.length || a.targetAfter - b.targetAfter
+    || a.donorAfter - b.donorAfter || a.distance - b.distance);
+  const seen = new Set();  // one bus per donor route
+  return result.filter((c) => !seen.has(c.donorId) && seen.add(c.donorId)).slice(0, 3);
 }
 
 function queueResultMarkup(gap, candidate) {
@@ -318,15 +379,14 @@ function renderCandidates() {
     }
     const selected = candidates.find((candidate) => candidate.id === state.candidateId);
     state.swap = selected;
-    const history = measure(selected.donorId, state.block);
-    const historyNote = history?.loadPercent >= 84
-      ? `<p class="queue-warning">The donor route averaged ${Math.round(history.loadPercent)}% peak load in this 2025 time block. A short UBC line does not rule out crowded stops farther along its route.</p>` : "";
     const dutyNote = selected.duty.next
-      ? `Its next published trip starts ${timeLabel(selected.duty.next[0])}, at least five minutes after this reroute ends and within 500 m of its new end.`
+      ? `Its next published trip starts ${timeLabel(selected.duty.next[0])}. ${selected.emptyRunKm ? `After an empty run of about ${selected.emptyRunKm.toFixed(1)} km it` : "It"} still has ${Math.floor(selected.spareMinutes)} min to spare after ${SCREEN.recoveryMinutes} min recovery.`
       : "No later passenger trip appears in this GTFS vehicle block. Driver and depot duties are still unknown.";
+    const cautionNote = selected.cautions.length
+      ? `<ul class="queue-cautions">${selected.cautions.map((text) => `<li>${escapeHtml(text)}</li>`).join("")}</ul>` : "";
     $("candidates-content").innerHTML = `${examples}<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
       <span class="candidate-top"><span class="candidate-route">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">Move the ${escapeHtml(candidate.donorId)} at ${timeLabel(candidate.trip.minute)}</span><span class="candidate-time">${escapeHtml(candidate.trip.bay)} → ${escapeHtml(gap.first.bay)} · ${candidate.distance} m</span></span></span>
-      <span class="candidate-divider"></span><span class="candidate-facts"><span>${candidate.duty.next ? "Next trip fits timetable" : "No next trip shown"}</span><span>${candidate.reroute.offKm.toFixed(1)} km off path</span></span>
+      <span class="candidate-divider"></span><span class="candidate-facts"><span>${candidate.cautions.length ? `${candidate.cautions.length} ${candidate.cautions.length === 1 ? "caution" : "cautions"}` : "Clean fit"}</span><span>${candidate.reroute.offKm.toFixed(1)} km off path</span></span>
     </button>`).join("")}</div>
     <div class="queue-workspace">
       <div class="queue-tradeoff"><div><span class="metric-label">${escapeHtml(state.route)} MAX GAP</span><strong>${selected.targetBefore} → ${selected.targetAfter} min</strong></div><div><span class="metric-label">${escapeHtml(selected.donorId)} MAX GAP</span><strong>${selected.donorBefore} → ${selected.donorAfter} min</strong></div></div>
@@ -336,7 +396,7 @@ function renderCandidates() {
       </div>
       <span class="queue-source">${state.queueSource === "example" ? "EXAMPLE COUNTS · NOT OBSERVED" : "MANUAL COUNTS · NOT VERIFIED BY APP"}</span>
       <div class="queue-result" id="queue-result" aria-live="polite">${queueResultMarkup(gap, selected)}</div>
-      <p class="queue-duty">${dutyNote} This is a timetable screen, not a dispatch authorization.</p>${historyNote}
+      <p class="queue-duty">${dutyNote} This is a timetable screen, not a dispatch authorization.</p>${cautionNote}
     </div>`;
     $("candidates-content").querySelectorAll("[data-candidate]").forEach((button) => button.addEventListener("click", () => {
       if (state.candidateId !== button.dataset.candidate) state.donorQueue = null;
