@@ -24,7 +24,7 @@
           <div>
             <p class="eyebrow">A simpler way to test a bus change</p>
             <h1 id="page-title">Where should the next <em>bus</em> go?</h1>
-            <p class="intro-copy">Pick a route to see its schedule and, where available, historical loads. For city routes, find which bus could practically fill a gap, and who gains or pays for it.</p>
+            <p class="intro-copy">Pick a route to see its schedule and historical loads. Find which bus could practically fill a gap, and who gains or pays for it, or test an added trip.</p>
           </div>
           <div class="snapshot-card" aria-label="Data periods">
             <div class="snapshot-line"><span class="snapshot-dot history"></span><span>LOADS</span><strong>Fall 2025 weekdays</strong></div>
@@ -65,9 +65,9 @@
           <section class="panel candidates-panel" aria-labelledby="candidates-title">
             <div class="candidates-heading">
               <div>
-                <div class="section-topline"><span class="step">03</span><span id="candidates-step">FIND A PRACTICAL SWITCH</span></div>
-                <h2 id="candidates-title">Which bus could fill that gap?</h2>
-                <p id="candidates-description">Every bus at UBC Exchange in the gap: finishing buses, then other routes' trips · checked for timing, bay, vehicle, both routes' loads, and getting back to its own schedule</p>
+                <div class="section-topline"><span class="step">03</span><span id="candidates-step">FILL THE GAP</span></div>
+                <h2 id="candidates-title">How could we fill that gap?</h2>
+                <p id="candidates-description">First, a bus from another route: finishing buses, then other routes' trips, checked for timing, bay, vehicle, both routes' loads and getting back to its own schedule. On crowded blocks, also an added trip on the same route.</p>
               </div>
               <span class="candidate-count" id="candidate-count"></span>
             </div>
@@ -89,9 +89,9 @@
             </div>
             <div class="map-legend" aria-hidden="true">
               <div id="map-legend-routes" class="map-legend-routes"></div>
-              <span><i class="key-line is-donor"></i>Nearby bus: its usual route</span>
-              <span><i class="key-dot"></i>Nearby bus: rerouted trip</span>
-              <span><i class="key-line is-empty"></i>Its empty run back</span>
+              <span class="donor-only"><i class="key-line is-donor"></i>Nearby bus: its usual route</span>
+              <span class="donor-only"><i class="key-dot"></i>Nearby bus: rerouted trip</span>
+              <span class="donor-only"><i class="key-line is-empty"></i>Its empty run back</span>
               <span><i class="key-line is-rail"></i>SkyTrain</span>
               <span><i class="key-line is-network"></i>Other bus routes</span>
             </div>
@@ -100,7 +100,7 @@
       </main>
 
       <footer class="footer">
-        <div class="footer-main"><strong>Decision aid, not dispatch advice.</strong> Where shown, the load signal is a 2025 route-and-time-block average, shared by every bus time in that block. A specific bus may be full or empty. Reassigning a trip needs vehicle, driver, route, and passenger checks.</div>
+        <div class="footer-main"><strong>Decision aid, not dispatch advice.</strong> Where shown, the load signal is a 2025 route-and-time-block average, shared by every bus time in that block. A specific bus may be full or empty. Any service change needs vehicle, driver, route, and passenger checks.</div>
         <div class="footer-sources"><a href="https://www.translink.ca/tspr" target="_blank" rel="noopener noreferrer">2025 TransLink TSPR ↗</a><a href="https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-data" target="_blank" rel="noopener noreferrer">TransLink GTFS ↗</a></div>
         <small>Route and arrival data used in this product or service is provided by permission of TransLink. TransLink assumes no responsibility for the accuracy or currency of the Data used in this product or service.</small>
       </footer>

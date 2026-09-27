@@ -7,6 +7,9 @@ The page optimises three crowded routes from UBC Exchange: **99, R4 and 49**. Th
 1. Click a route to rank its fall weekday time blocks by 2025 **average peak passengers on board** from TransLink's TSPR. The percentage/status uses the corresponding historical average peak load factor. It describes the busiest point along the route, not UBC Exchange.
 2. Click a time block, hour, and scheduled departure from the 2026-09-28 TransLink GTFS feed. The app shows the gap until the next scheduled bus. This is a **2025 versus 2026 scenario**, not a matched observation.
 3. For city routes, the app checks every bus that could fill a gap of **at most 60 minutes** and ranks the practical ones (`app/switching.js`, below). Longer intervals are treated as scheduled service breaks. The campus shuttle (68) and NightBus (N17) are shown for context only and are never swapped with city routes. Each option shows what it does for the target route's riders, what it costs the other route's riders, and what operations has to do.
+4. When a route's historical load factor is at least 84% and the selected same-block timetable gap is 6–60 minutes, the app also shows a **new-trip scenario** at the gap midpoint. It calculates the new scheduled intervals and departure count. This needs an additional vehicle and operator; it does not assume one is spare or predict how many people would use the new trip. See the [route 33 planning example](../PEAK_SERVICE_PLAN.md).
+
+The demo opens on route 99's afternoon peak. Route 33 is no longer in the selector; its added-trip example, with the September 2026 service-increase caveat, is written up in the [peak service plan](../PEAK_SERVICE_PLAN.md).
 
 The options are **schedule scenarios**, not real-time bus locations. Any real change still needs current per-trip loads, a willing driver, and dispatch approval.
 
