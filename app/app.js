@@ -8,14 +8,16 @@ const state = {
   swap: null,
   map: null,
   duties: null,
+  demand: null,
   targetQueue: null,
   donorQueue: null,
   queueSource: null,
 };
 const MAX_FILLABLE_GAP = 60;
+// One screened reroute the simulated demand favours (the day's largest saving) and a clean timetable fit it rejects.
 const QUEUE_EXAMPLES = {
-  morning: { route: "9", block: 6, hour: 8 * 60, tripId: "15444157", candidateId: "99:15460921", targetQueue: 30, donorQueue: 5 },
-  evening: { route: "14", block: 21, hour: 23 * 60, tripId: "15450431", candidateId: "4:15441423", targetQueue: 30, donorQueue: 2 },
+  peak: { label: "99 → 9 at 17:43", route: "9", block: 15, hour: 17 * 60, tripId: "15444221", candidateId: "99:15461090" },
+  evening: { label: "4 → 14 at 19:38", route: "14", block: 18, hour: 19 * 60, tripId: "15450419", candidateId: "4:15441385" },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -30,6 +32,28 @@ function route(id = state.route) { return state.data.routes[id]; }
 function block(code = state.block) { return state.data.timeBlocks.find((item) => item.code === code); }
 function departures(id = state.route) { return route(id).departures; }
 function measure(id = state.route, code = state.block) { return route(id).blocks[String(code)]; }
+
+function serviceWeekday() {
+  return ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][new Date(`${state.data.serviceDate}T12:00:00Z`).getUTCDay()];
+}
+
+/** Simulated students who reach a route's bay between two minutes, arriving evenly within each hour. */
+function simulatedWaiting(routeId, from, to) {
+  const perHour = state.demand?.departuresPerHour[serviceWeekday()]?.[routeId];
+  if (!perHour) return null;
+  let total = 0;
+  for (let minute = from; minute < to;) {
+    const hour = Math.floor(minute / 60), end = Math.min(to, (hour + 1) * 60);
+    if (perHour[hour] == null) return null;  // outside the simulated hours, including after midnight
+    total += perHour[hour] * (end - minute) / 60;
+    minute = end;
+  }
+  return Math.round(total);
+}
+
+function queueGain(gap, candidate, targetQueue, donorQueue) {
+  return targetQueue * (gap.next.minute - candidate.trip.minute) - donorQueue * (candidate.donorNextMinute - candidate.trip.minute);
+}
 
 function clearQueueCounts() {
   state.targetQueue = null;
@@ -82,8 +106,12 @@ function bestCandidateGap(routeId, code, restrictHour = null) {
     const candidate = options[0];
     const benefit = candidate.targetBefore - candidate.targetAfter;
     const donorPenalty = candidate.donorAfter - candidate.donorBefore;
-    const score = benefit * 100 - donorPenalty - candidate.cautions.length * 10000;  // cleanest fit first
-    if (!best || score > best.score) best = { tripId: first.tripId, hour: Math.floor(first.minute / 60) * 60, score };
+    // Cleanest fit first, then the largest simulated wait saving, then the gap change.
+    const cautions = candidate.cautions.length, gain = candidate.simulatedGain ?? -Infinity;
+    const score = benefit * 100 - donorPenalty;
+    if (!best || cautions < best.cautions || (cautions === best.cautions && (gain > best.gain || (gain === best.gain && score > best.score)))) {
+      best = { tripId: first.tripId, hour: Math.floor(first.minute / 60) * 60, cautions, gain, score };
+    }
   }
   return best;
 }
@@ -293,19 +321,28 @@ function queueCandidatesForGap(gap, rules = SCREEN) {
       const donorLoad = measure(donorId)?.loadPercent;
       if (donorLoad >= 84) cautions.push(`Its own route averaged ${Math.round(donorLoad)}% peak load in this 2025 time block, so crowded stops farther along it may lose a bus.`);
       const previousDonor = donor.departures[i - 1], nextDonor = donor.departures[i + 1];
-      result.push({
+      const option = {
         ...candidate, duty, reroute, expectedEnd, emptyRunKm, spareMinutes, cautions,
         targetBefore: gapLength,
         targetAfter: Math.max(trip.minute - gap.first.minute, gap.next.minute - trip.minute),
         donorBefore: Math.max(trip.minute - previousDonor.minute, nextDonor.minute - trip.minute),
         donorAfter: nextDonor.minute - previousDonor.minute,
+        donorPreviousMinute: previousDonor.minute,
         donorNextMinute: nextDonor.minute,
-      });
+      };
+      // Waiting now = simulated arrivals since each line's previous bus left.
+      const target = simulatedWaiting(state.route, gap.first.minute, trip.minute);
+      const waiting = simulatedWaiting(donorId, previousDonor.minute, trip.minute);
+      option.simulated = target === null || waiting === null ? null : { target, donor: waiting };
+      option.simulatedGain = option.simulated ? queueGain(gap, option, target, waiting) : null;
+      result.push(option);
     }
   }
-  // Best fit first: fewest cautions, then the most even target gap, the least harm to the donor, the nearest bay.
-  result.sort((a, b) => a.cautions.length - b.cautions.length || a.targetAfter - b.targetAfter
-    || a.donorAfter - b.donorAfter || a.distance - b.distance);
+  // Best fit first: fewest cautions, then the largest simulated wait saving, the most even target gap,
+  // the least harm to the donor, the nearest bay.
+  result.sort((a, b) => a.cautions.length - b.cautions.length
+    || (b.simulatedGain ?? -Infinity) - (a.simulatedGain ?? -Infinity)
+    || a.targetAfter - b.targetAfter || a.donorAfter - b.donorAfter || a.distance - b.distance);
   const seen = new Set();  // one bus per donor route
   return result.filter((c) => !seen.has(c.donorId) && seen.add(c.donorId)).slice(0, 3);
 }
@@ -316,13 +353,15 @@ function queueResultMarkup(gap, candidate) {
   if (state.targetQueue === null || state.donorQueue === null) {
     return `<strong>Enter both line counts to compare this move.</strong><p>A person already waiting for the ${escapeHtml(state.route)} could leave ${targetSave} min sooner. A person waiting for the removed ${escapeHtml(candidate.donorId)} trip could wait ${donorWait} min longer.</p>`;
   }
-  const gain = state.targetQueue * targetSave - state.donorQueue * donorWait;
+  const gain = queueGain(gap, candidate, state.targetQueue, state.donorQueue);
   const heading = gain > 0 ? `${gain.toLocaleString()} passenger-minutes saved at these bays`
     : gain < 0 ? `${Math.abs(gain).toLocaleString()} more passenger-minutes waiting at these bays`
       : "No bay-only wait advantage";
+  const simulated = state.queueSource === "simulated"
+    ? `<p>Simulated ${serviceWeekday()[0]}${serviceWeekday().slice(1).toLowerCase()} demand: ${state.targetQueue} students reach the ${escapeHtml(state.route)} line in the ${candidate.trip.minute - gap.first.minute} min since its ${timeLabel(gap.first.minute)} bus; ${state.donorQueue} reach the ${escapeHtml(candidate.donorId)} line in the ${candidate.trip.minute - candidate.donorPreviousMinute} min since its ${timeLabel(candidate.donorPreviousMinute)} bus.${candidate.trip.minute < 12 * 60 ? " The simulation has few departures before noon, so morning counts are likely too low." : ""}</p>` : "";
   return `<strong class="${gain > 0 ? "is-positive" : gain < 0 ? "is-negative" : ""}">${heading}</strong>
-    <p>${state.targetQueue} × ${targetSave} min saved for ${escapeHtml(state.route)} − ${state.donorQueue} × ${donorWait} min added for ${escapeHtml(candidate.donorId)} = ${gain.toLocaleString()}.</p>
-    <p>This counts only people entered as waiting now. It excludes passengers along both routes, available seats, bay movement and operator constraints.</p>`;
+    <p>${state.targetQueue} × ${targetSave} min saved for ${escapeHtml(state.route)} − ${state.donorQueue} × ${donorWait} min added for ${escapeHtml(candidate.donorId)} = ${gain.toLocaleString()}.</p>${simulated}
+    <p>This counts only people waiting at these two bays and assumes the bus can take everyone counted. It excludes passengers along both routes, bay movement and operator constraints.</p>`;
 }
 
 function applyQueueExample(which) {
@@ -332,9 +371,7 @@ function applyQueueExample(which) {
   state.hour = example.hour;
   state.tripId = example.tripId;
   state.candidateId = example.candidateId;
-  state.targetQueue = example.targetQueue;
-  state.donorQueue = example.donorQueue;
-  state.queueSource = "example";
+  clearQueueCounts();
   render();
 }
 
@@ -345,7 +382,7 @@ function renderCandidates() {
   $("candidates-title").textContent = special ? "How can we use this route?" : "Which line should get the bus?";
   $("candidates-description").textContent = special
     ? "Its published timetable and path are available. This app compares city-bus queue scenarios separately."
-    : "Enter people waiting at two bays. See who boards sooner and who waits longer if one scheduled bus changes route.";
+    : "Line counts start from simulated student demand; replace them with counts you observe. See who boards sooner and who waits longer if one scheduled bus changes route.";
   if (special) {
     state.candidateId = null;
     state.swap = null;
@@ -358,10 +395,9 @@ function renderCandidates() {
     renderMap();
     return;
   }
-  const examples = `<div class="queue-examples"><span>ILLUSTRATIVE QUEUE SCENARIOS</span>
-    <button type="button" data-queue-example="morning">99 → 9 at 08:14</button>
-    <button type="button" data-queue-example="evening">4 → 14 at 23:20</button>
-    <small>Example line counts can be changed below. No live queue feed is connected.</small></div>`;
+  const examples = `<div class="queue-examples"><span>SIMULATED DEMAND SCENARIOS</span>
+    ${Object.entries(QUEUE_EXAMPLES).map(([key, example]) => `<button type="button" data-queue-example="${key}">${escapeHtml(example.label)}</button>`).join("")}
+    <small>Line counts come from a Monte Carlo student simulation and can be changed below. No live queue feed is connected.</small></div>`;
   const candidates = queueCandidatesForGap(gap);
   $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "QUEUE OPTION" : "QUEUE OPTIONS"}`;
   if (!candidates.length) {
@@ -379,6 +415,13 @@ function renderCandidates() {
     }
     const selected = candidates.find((candidate) => candidate.id === state.candidateId);
     state.swap = selected;
+    if (state.queueSource !== "manual") {
+      state.targetQueue = selected.simulated?.target ?? null;
+      state.donorQueue = selected.simulated?.donor ?? null;
+      state.queueSource = selected.simulated ? "simulated" : null;
+    }
+    const sourceLabel = state.queueSource === "simulated" ? `SIMULATED STUDENT DEMAND · ${serviceWeekday()} · NOT OBSERVED`
+      : state.queueSource === "manual" ? "MANUAL COUNTS · NOT VERIFIED BY APP" : "NO SIMULATED DEMAND FOR THIS TIME · ENTER COUNTS";
     const dutyNote = selected.duty.next
       ? `Its next published trip starts ${timeLabel(selected.duty.next[0])}. ${selected.emptyRunKm ? `After an empty run of about ${selected.emptyRunKm.toFixed(1)} km it` : "It"} still has ${Math.floor(selected.spareMinutes)} min to spare after ${SCREEN.recoveryMinutes} min recovery.`
       : "No later passenger trip appears in this GTFS vehicle block. Driver and depot duties are still unknown.";
@@ -387,6 +430,8 @@ function renderCandidates() {
     $("candidates-content").innerHTML = `${examples}<div class="candidate-grid">${candidates.map((candidate) => `<button class="candidate" type="button" data-candidate="${escapeHtml(candidate.id)}" aria-pressed="${candidate.id === state.candidateId}">
       <span class="candidate-top"><span class="candidate-route">${escapeHtml(candidate.donorId)}</span><span><span class="candidate-name">Move the ${escapeHtml(candidate.donorId)} at ${timeLabel(candidate.trip.minute)}</span><span class="candidate-time">${escapeHtml(candidate.trip.bay)} → ${escapeHtml(gap.first.bay)} · ${candidate.distance} m</span></span></span>
       <span class="candidate-divider"></span><span class="candidate-facts"><span>${candidate.cautions.length ? `${candidate.cautions.length} ${candidate.cautions.length === 1 ? "caution" : "cautions"}` : "Clean fit"}</span><span>${candidate.reroute.offKm.toFixed(1)} km off path</span></span>
+      ${candidate.simulatedGain === null ? "" : `<span class="candidate-sim ${candidate.simulatedGain < 0 ? "is-negative" : ""}">Simulated: ${candidate.simulatedGain === 0 ? "no wait change"
+        : `${candidate.simulatedGain < 0 ? "adds" : "saves"} ${Math.abs(candidate.simulatedGain).toLocaleString()} passenger-min`}</span>`}
     </button>`).join("")}</div>
     <div class="queue-workspace">
       <div class="queue-tradeoff"><div><span class="metric-label">${escapeHtml(state.route)} MAX GAP</span><strong>${selected.targetBefore} → ${selected.targetAfter} min</strong></div><div><span class="metric-label">${escapeHtml(selected.donorId)} MAX GAP</span><strong>${selected.donorBefore} → ${selected.donorAfter} min</strong></div></div>
@@ -394,14 +439,14 @@ function renderCandidates() {
         <label>Waiting for ${escapeHtml(state.route)} · ${escapeHtml(gap.first.bay)}<input id="target-queue" type="number" min="0" max="1000" step="1" inputmode="numeric" value="${state.targetQueue ?? ""}" placeholder="Count people" /></label>
         <label>Waiting for ${escapeHtml(selected.donorId)} · ${escapeHtml(selected.trip.bay)}<input id="donor-queue" type="number" min="0" max="1000" step="1" inputmode="numeric" value="${state.donorQueue ?? ""}" placeholder="Count people" /></label>
       </div>
-      <span class="queue-source">${state.queueSource === "example" ? "EXAMPLE COUNTS · NOT OBSERVED" : "MANUAL COUNTS · NOT VERIFIED BY APP"}</span>
+      <span class="queue-source">${sourceLabel}</span>
       <div class="queue-result" id="queue-result" aria-live="polite">${queueResultMarkup(gap, selected)}</div>
       <p class="queue-duty">${dutyNote} This is a timetable screen, not a dispatch authorization.</p>${cautionNote}
     </div>`;
     $("candidates-content").querySelectorAll("[data-candidate]").forEach((button) => button.addEventListener("click", () => {
       if (state.candidateId !== button.dataset.candidate) state.donorQueue = null;
       state.candidateId = button.dataset.candidate;
-      state.queueSource = null;
+      if (state.queueSource !== "manual") state.queueSource = null;  // re-simulate for the new bay
       renderCandidates();
     }));
     for (const [id, key] of [["target-queue", "targetQueue"], ["donor-queue", "donorQueue"]]) {
@@ -696,6 +741,7 @@ async function boot() {
     // The map and block snapshot are optional; the timetable remains readable without them.
     const mapRequest = fetch("app/route_map.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
     const dutiesRequest = fetch("app/block_duties.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const demandRequest = fetch("app/queue_demand.json").then((r) => (r.ok ? r.json() : null)).catch(() => null);
     const response = await fetch("app/data.json");
     if (!response.ok) throw new Error(`Data request failed (${response.status})`);
     state.data = await response.json();
@@ -703,6 +749,7 @@ async function boot() {
     state.map = await mapRequest;
     state.duties = await dutiesRequest;
     if (state.duties && (state.duties.serviceDate !== state.data.serviceDate || state.duties.feedVersion !== state.data.feedVersion)) state.duties = null;
+    state.demand = await demandRequest;
     if (state.map) {
       $("map-panel").hidden = false;
       $("route-map").addEventListener("click", (event) => {
@@ -711,7 +758,7 @@ async function boot() {
       });
     }
     $("app-content").hidden = false;
-    applyQueueExample("morning");
+    applyQueueExample("peak");
   } catch (error) {
     $("app-error").hidden = false;
     $("app-error").textContent = `The planner could not load its data. Serve this folder with a local web server, then reload. ${error.message}`;

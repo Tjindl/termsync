@@ -52,6 +52,7 @@ h1 em { color: var(--orange); font-weight: 500; font-style: normal; }
 .snapshot-dot { width: 7px; height: 7px; border-radius: 50%; }
 .snapshot-dot.history { background: var(--orange); }
 .snapshot-dot.schedule { background: var(--teal); }
+.snapshot-dot.simulated { background: var(--ink); }
 .snapshot-card p { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
 
 .route-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 9px; }
@@ -149,6 +150,8 @@ h2 { margin: 0; font-weight: 700; font-size: 22px; letter-spacing: -.045em; line
 .candidate-facts { display: flex; justify-content: space-between; gap: 6px; font: 500 10px var(--mono); color: var(--teal); }
 .candidate-facts span:last-child { color: var(--muted); }
 .candidate-reroute { display: block; margin-top: 9px; font: 500 10px var(--mono); color: #b34a31; }
+.candidate-sim { display: block; margin-top: 9px; font: 600 10px var(--mono); color: var(--teal); }
+.candidate-sim.is-negative { color: #b34a31; }
 .swap-detail { display: grid; grid-template-columns: 1fr 1fr 1.45fr; gap: 20px; margin-top: 13px; padding: 16px 18px; background: #f2f6f2; border: 1px solid #d7e5db; border-radius: 6px; }
 .swap-detail .metric-label { display: block; font: 500 10px var(--mono); color: var(--muted); letter-spacing: .03em; margin-bottom: 6px; }
 .swap-detail strong { font: 600 16px var(--mono); }

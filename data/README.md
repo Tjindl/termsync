@@ -2,7 +2,7 @@
 
 This directory is the compact input package for [`TECH_SPEC.md`](../TECH_SPEC.md). It was prepared on 2026-09-26 for a **planning demo**, not an operational dispatch system. All CSVs are UTF-8 with a header row; empty numeric cells mean the source did not report a value.
 
-The separate [static app snapshot](../app/README.md) covers 12 UBC Exchange routes; the curated CSV tables below retain the original three-route scope.
+The separate [static app snapshot](../app/README.md) covers 12 UBC Exchange routes; the curated CSV tables below retain the original three-route scope, except the simulated demand table, which covers the app's 10 regular routes.
 
 | File | Rows | Grain | Role |
 | --- | ---: | --- | --- |
@@ -15,6 +15,7 @@ The separate [static app snapshot](../app/README.md) covers 12 UBC Exchange rout
 | `ubc_campus_summary_2023_2025.csv` | 3 | Fall weekday snapshot × year | Campus-wide person trips, transit share, and daytime population context. |
 | `ubc_travel_context.csv` | 19 | Year × metric × route/direction/period | Normalized view of the three UBC report extracts above, ready for the app's `ubc_travel_context` table. |
 | `ubc_academic_dates.csv` | 13 | Academic period | Most-faculty teaching, exam, and midterm-break labels. |
+| `monte_carlo_bus_demand.csv` | 1,802 | Route × weekday × clock hour × trip type | **Simulated** students arriving at (`Arrival`) or leaving (`Departure`) UBC on 99/R4/49/9/44/84/4/14/25/33, 06:00–23:59. The app uses the `Departure` rows for bay-queue estimates. |
 
 ## What the numbers mean
 
@@ -25,6 +26,7 @@ The separate [static app snapshot](../app/README.md) covers 12 UBC Exchange rout
 - `average_weekday_transit_trips_to_from_ubc` in the UBC route table counts **bidirectional campus screenline trips over the entire day**. It is neither a daily rider count nor UBC Exchange boardings. `ubc_peak_hours_2025.csv` covers **all transit routes together**; it cannot be allocated to 99/R4/49 without an explicit assumption. The UBC reports are survey snapshots, not a daily history.
 - The timetable is **scheduled**, not actual bus arrival or performance data. It contains one representative Monday (2026-09-28), Saturday (2026-10-03), and Sunday (2026-10-04) from GTFS feed `26SEP_20260925` (feed validity 2026-09-07 through 2027-01-03). `direction=toward_ubc` represents an arrival at the Exchange unloading stop; `away_from_ubc` represents a departure from a boarding bay. Times retain Vancouver offsets and UTC versions, including any GTFS times after 24:00. Download a fresh feed to plan another date.
 - Academic labels overlap: a midterm break sits inside a term's class interval. They describe the calendar, not attendance. “Most faculties” has exceptions.
+- `student_count` in `monte_carlo_bus_demand.csv` is a **Monte Carlo simulation output** for students, not an observed count of riders, boardings, or queues. A missing route/weekday/hour row means the simulation produced no students then; hours 00:00–05:59 are not simulated. Checked against UBC's 2025 survey (`ubc_peak_hours_2025.csv`, all transit routes), the simulated Monday peak-direction flows are close: 4,589 students arriving at 09:00–10:00 against 5,094 counted inbound transit trips (90%), and 4,748 leaving at 17:00–18:00 against 5,655 (84%). The counter-peak flows are nearly absent: 37 departures at 09:00–10:00 against 1,500 counted, and 74 arrivals at 17:00–18:00 against 2,875. Whole-day totals for 99, R4, and 49 are 39–53% of `ubc_route_trips_2025.csv`, consistent with a students-only model. Treat simulated morning departures as far too low.
 
 ## How the tables connect
 
@@ -32,6 +34,7 @@ The separate [static app snapshot](../app/README.md) covers 12 UBC Exchange rout
 2. For a route/day type/time block, use `translink_route_load_history_2025` to see historical crowding. The time-block codes are starts of these intervals: `4` = 04:00–06:00, `6` = 06:00–09:00, `9` = 09:00–15:00, `15` = 15:00–18:00, `18` = 18:00–21:00, `21` = 21:00–24:00, and `24` = 24:00–04:00. `MF` means Monday–Friday; `Sun/Hol` includes Sundays and holidays.
 3. Filter the GTFS table to a **sample service date, route, direction, and event type** to calculate scheduled gaps. Match historical crowding to a timetable by route/direction/day type/time block for a *cross-year scenario*, not a same-day observational join. The synthetic interval ends before this GTFS sample starts. There is no observed 2025/26 synthetic-to-bus-load pairing here.
 4. Use `ubc_travel_context.csv` in the app, or inspect its three source extracts (`ubc_route_trips_2025.csv`, `ubc_peak_hours_2025.csv`, `ubc_campus_summary_2023_2025.csv`). Do not multiply synthetic records by a passenger conversion factor or claim exact load after adding a bus.
+5. Join `monte_carlo_bus_demand.csv` to the timetable by **route, weekday, and clock hour**, using `Departure` rows for people waiting at UBC Exchange bays. It is a simulated scenario input, not a measurement, so do not treat agreement or disagreement with the TSPR loads as validation of either.
 
 ## Sources and reproducibility
 
@@ -39,6 +42,7 @@ The separate [static app snapshot](../app/README.md) covers 12 UBC Exchange rout
 - **Historical transit:** TransLink's [2025 Transit Service Performance Review](https://www.translink.ca/tspr), using its [seasonal peak-load CSV](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_peakload_yearlinedaytypeseasontimerangedirection.csv), [seasonal service CSV](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_yearlinedaytypeseasontimerange.csv), and [annual route CSV](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/csv-data/2025/tspr2025_bus_yearline.csv). The [TransLink metric definitions](https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/tspr/tspr_2019_bus_seabus_handydart_definitions.pdf) define the time blocks and load terms.
 - **Timetable:** TransLink [GTFS static feed](https://gtfs-static.translink.ca/gtfs/google_transit.zip), version `26SEP_20260925`, retrieved 2026-09-26. The [GTFS developer page](https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-data) explains that the feed is updated regularly and sets the attribution requirement.
 - **UBC travel:** [2025 Transportation Status Report](https://planning.ubc.ca/sites/default/files/2026-06/UBC2025-TransportationStatusReport-FINAL.pdf), especially Tables 2.3 and 3.3. Year-by-year values retain the report's own published estimates.
+- **Simulated demand:** `monte_carlo_bus_demand.csv` is the team's Monte Carlo student bus-demand output, generated 2026-09-26 and copied unchanged. [`scripts/build_queue_demand.py`](../scripts/build_queue_demand.py) converts its `Departure` rows into the app's `app/queue_demand.json`. A companion capacity-utilization output was not added: its `total_students` is `Arrival` + `Departure` from this file, and its hourly capacities do not match the buses scheduled in the GTFS sample.
 - **Academic dates:** [UBC 2025/26 calendar](https://vancouver.calendar.ubc.ca/academic-year-202526/all-months) and [UBC 2026/27 dates](https://vancouver.calendar.ubc.ca/dates-and-deadlines).
 
 The build script is [`scripts/build_data.py`](../scripts/build_data.py). It takes the local aggregate CSV, three TSPR CSVs, three UBC report extracts, and the GTFS ZIP as explicit file arguments; run `python3 scripts/build_data.py --help` for the argument names. It requires only the Python standard library.

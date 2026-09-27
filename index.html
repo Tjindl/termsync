@@ -23,12 +23,13 @@
           <div>
             <p class="eyebrow">A simpler way to test a bus change</p>
             <h1 id="page-title">Where should the next <em>bus</em> go?</h1>
-            <p class="intro-copy">Compare lines at nearby UBC bays. Enter counts to see whose wait shrinks, whose wait grows, and whether a bus can fit its next scheduled trip.</p>
+            <p class="intro-copy">Compare lines at nearby UBC bays. Start from simulated line counts or enter your own to see whose wait shrinks, whose wait grows, and whether a bus can fit its next scheduled trip.</p>
           </div>
           <div class="snapshot-card" aria-label="Data periods">
             <div class="snapshot-line"><span class="snapshot-dot history"></span><span>LOADS</span><strong>Fall 2025 weekdays</strong></div>
             <div class="snapshot-line"><span class="snapshot-dot schedule"></span><span>TIMES</span><strong>Mon 28 Sep 2026</strong></div>
-            <p>Line counts are examples or manual inputs, never live observations.</p>
+            <div class="snapshot-line"><span class="snapshot-dot simulated"></span><span>LINES</span><strong>Simulated student demand</strong></div>
+            <p>Line counts are simulated or manual inputs, never live observations.</p>
           </div>
         </section>
 
@@ -66,7 +67,7 @@
               <div>
                 <div class="section-topline"><span class="step">03</span><span id="candidates-step">PRIORITIZE A BAY</span></div>
                 <h2 id="candidates-title">Which line should get the bus?</h2>
-                <p id="candidates-description">Enter observed line counts and compare the wait gained at one bay with the wait imposed at another.</p>
+                <p id="candidates-description">Line counts start from simulated student demand; replace them with counts you observe.</p>
               </div>
               <span class="candidate-count" id="candidate-count"></span>
             </div>
@@ -98,7 +99,7 @@
       </main>
 
       <footer class="footer">
-        <div class="footer-main"><strong>Decision aid, not dispatch advice.</strong> Queue counts are entered by a person or loaded as clearly marked examples. The app does not observe live lines. Historical loads describe the busiest point along a route, not UBC bays. Any service change needs downstream demand, vehicle capacity, driver, bay, and recovery checks.</div>
+        <div class="footer-main"><strong>Decision aid, not dispatch advice.</strong> Queue counts come from a Monte Carlo student-demand simulation or are entered by a person. The app does not observe live lines. Historical loads describe the busiest point along a route, not UBC bays. Any service change needs downstream demand, vehicle capacity, driver, bay, and recovery checks.</div>
         <div class="footer-sources"><a href="https://www.translink.ca/tspr" target="_blank" rel="noopener noreferrer">2025 TransLink TSPR ↗</a><a href="https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-data" target="_blank" rel="noopener noreferrer">TransLink GTFS ↗</a></div>
         <small>Route and arrival data used in this product or service is provided by permission of TransLink. TransLink assumes no responsibility for the accuracy or currency of the Data used in this product or service.</small>
       </footer>
