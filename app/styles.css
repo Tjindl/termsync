@@ -140,7 +140,8 @@ h1 em { font-style: italic; }
 .route-button:hover { border-color: var(--rule-strong); }
 .route-button[aria-pressed="true"] { border-color: var(--ink); box-shadow: var(--shadow); }
 .route-button[aria-pressed="true"]::before { opacity: 1; }
-.route-number, .chip, .candidate-route, .route-number { min-width: 58px; height: 50px; padding: 0 var(--s-2); font-size: var(--t-2xl); }
+.route-number, .chip, .candidate-route { display: inline-grid; place-items: center; flex: none; border-radius: var(--r-sm); background: var(--route-color, var(--ink)); color: var(--on-ink); font-family: var(--font-sign); font-weight: 800; line-height: 1; }
+.route-number { min-width: 58px; height: 50px; padding: 0 var(--s-2); font-size: var(--t-2xl); }
 .route-info { min-width: 0; }
 .route-info strong { display: block; overflow: hidden; font-size: var(--t-lg); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
 .route-info small { display: block; color: var(--ink-2); font-size: var(--t-sm); }
