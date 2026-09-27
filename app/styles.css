@@ -1,25 +1,25 @@
 /* ── Tokens ───────────────────────────────────────────────────────────────────────────────
-   A transit timetable with an editorial voice: warm paper, ink, and colour reserved for the
-   routes and their load levels. The one dark surface is the departure board that answers the
-   page's question. Every value below is used by name; nothing else introduces a colour or size. */
+   Metro Vancouver transit wayfinding: white signs on a cool grey, a transit blue for the header
+   band and anything you can act on, and a near-black real-time sign with amber LED figures for
+   the answer. Route and load colours are the only other colour. No agency logos or marks.
+   Every value below is used by name; nothing else introduces a colour or size. */
 :root {
-  --paper: #f4efe5;
-  --surface: #fffcf6;
-  --ink: #172421;
-  --ink-2: #4d5a55;          /* secondary text: 6.3:1 on paper */
-  --rule: #ddd5c6;           /* hairlines */
-  --rule-strong: #7d857f;    /* borders of things you type in or pick: 3.7:1 */
-  --tint: #efe8da;           /* hover and quiet fills */
-  --accent: #006c60;         /* gains, links, the selected hour */
-  --accent-tint: #dcebe3;
+  --paper: #eef1f5;
+  --surface: #ffffff;
+  --ink: #0f1c2b;
+  --ink-2: #4a5767;          /* secondary text: 6.5:1 on paper */
+  --rule: #d4dae2;           /* hairlines */
+  --rule-strong: #7a8696;    /* borders of things you type in or pick: 3.3:1 */
+  --tint: #e4e9ef;           /* hover and quiet fills */
+  --accent: #0057a0;         /* transit blue: the header band, gains, links, the selected hour */
+  --accent-tint: #dde8f4;
   --loss: #a4302a;           /* losses and warnings only */
-  --loss-tint: #f6e2db;
-  --on-ink: #fffcf6;
-  --board: #13221e;          /* the departure board */
-  --board-rule: #2a3d37;
-  --on-board-2: #a9bab3;     /* 8.1:1 on the board */
-  --amber: #f7b53b;          /* board figures: 9.1:1 on the board */
-  --brand-dot: #eeb15a;
+  --loss-tint: #f7e3e0;
+  --on-ink: #ffffff;
+  --board: #0c1620;          /* the real-time sign */
+  --board-rule: #243242;
+  --on-board-2: #a7b4c2;     /* 8.6:1 on the board */
+  --amber: #f7b53b;          /* LED figures: 10.1:1 on the board */
 
   /* Load levels, checked for colour-blind separation; always shown with a label or value. */
   --load-overloaded: #9e2330;
@@ -40,14 +40,19 @@
   --route-33: #795083;
   --route-68: #3b6479;
   --route-N17: #35425e;
-  --rail: #8f9c97;
+  --rail: #8e99a6;
+  --rail-expo: #1d4f9c;      /* rapid transit line colours, only in the hero diagram */
+  --rail-canada: #0079a8;
 
-  /* Type: Newsreader for headlines and big figures, Hanken Grotesk for reading, Big Shoulders for
-     route numbers (the destination sign), Plex Mono for times. */
-  --font-display: "Newsreader", "Iowan Old Style", Georgia, serif;
-  --font-text: "Hanken Grotesk", system-ui, sans-serif;
+  /* Type: Archivo, a signage grotesque, for everything you read (semi-condensed and bold for
+     headlines); Big Shoulders for route numbers (the destination sign); Plex Mono for times;
+     Doto, a dot-matrix face, for the LED figure on the real-time sign. */
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-text: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --font-sign: "Big Shoulders Display", "Arial Narrow", sans-serif;
   --font-data: "IBM Plex Mono", ui-monospace, monospace;
+  --font-led: "Doto", "IBM Plex Mono", ui-monospace, monospace;
+  --stretch-display: 88%;
   --t-xs: 12px;
   --t-sm: 13px;
   --t-md: 15px;
@@ -59,7 +64,7 @@
   --t-board: 56px;           /* the figure on the departure board */
   --leading: 1.55;
   --leading-tight: 1.05;
-  --tracking-display: -0.025em;
+  --tracking-display: -0.02em;
   --tracking-caps: 0.08em;
 
   /* Space and shape */
@@ -77,8 +82,8 @@
   --r-pill: 999px;
   --hair: 1px;
   --thick: 3px;
-  --shadow: 0 1px 0 rgb(23 36 33 / 0.04), 0 14px 30px -20px rgb(23 36 33 / 0.35);
-  --shadow-pressed: 0 1px 2px rgb(23 36 33 / 0.18);
+  --shadow: 0 1px 0 rgb(15 28 43 / 0.04), 0 14px 30px -20px rgb(15 28 43 / 0.35);
+  --shadow-pressed: 0 1px 2px rgb(15 28 43 / 0.18);
   --measure: 64ch;
   --shell: 1240px;
   --control: 44px;
@@ -94,7 +99,7 @@ button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 a { color: var(--accent); text-underline-offset: 3px; }
-h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 500; letter-spacing: var(--tracking-display); line-height: var(--leading-tight); }
+h1, h2, h3 { margin: 0; font-family: var(--font-display); font-stretch: var(--stretch-display); font-weight: 700; letter-spacing: var(--tracking-display); line-height: var(--leading-tight); }
 p { margin: 0; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
@@ -104,16 +109,21 @@ p { margin: 0; }
 .gap-number, .compare-value, .answer-value, .reroute-facts dd strong { font-variant-numeric: lining-nums tabular-nums; }
 
 /* ── Masthead and intro ───────────────────────────────────────────────────────────────── */
-.masthead { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); padding: var(--s-4) 0; border-bottom: var(--hair) solid var(--rule); }
-.brand { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--ink); text-decoration: none; font-size: var(--t-lg); font-weight: 700; letter-spacing: -0.03em; }
-.brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--ink); color: var(--on-ink); font: 600 var(--t-md)/1 var(--font-data); }
-.brand-mark span { color: var(--brand-dot); }
-.masthead-meta { color: var(--ink-2); font-size: var(--t-sm); }
+/* A blue band across the top, like the head of a bus stop sign. */
+.masthead { background: var(--accent); color: var(--on-ink); }
+.masthead-inner { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); min-height: 60px; }
+.brand { display: inline-flex; align-items: center; gap: var(--s-3); color: var(--on-ink); text-decoration: none; font-size: var(--t-lg); font-weight: 700; font-stretch: var(--stretch-display); letter-spacing: -0.01em; }
+.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--r-sm); background: var(--surface); }
+.brand-mark svg { width: 22px; height: 22px; }
+.brand-mark .bus-body { fill: var(--accent); }
+.brand-mark .bus-glass { fill: var(--surface); }
+.masthead-meta { font-size: var(--t-sm); font-weight: 500; }
+.brand:focus-visible, .masthead a:focus-visible { outline-color: var(--on-ink); }
 
 .intro { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); align-items: center; gap: var(--s-6); padding: var(--s-7) 0 var(--s-6); }
 .eyebrow { margin-bottom: var(--s-3); color: var(--accent); font-size: var(--t-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
-h1 { font-size: var(--t-3xl); font-weight: 400; max-width: 13ch; }
-h1 em { font-style: italic; }
+h1 { font-size: var(--t-3xl); max-width: 13ch; }
+h1 em { font-style: normal; color: var(--accent); }
 .intro-copy { max-width: 52ch; margin-top: var(--s-4); color: var(--ink-2); font-size: var(--t-lg); line-height: 1.5; }
 .sources { display: grid; grid-template-columns: auto 1fr; gap: var(--s-1) var(--s-4); margin: var(--s-5) 0 0; padding-top: var(--s-3); border-top: var(--hair) solid var(--rule); font-size: var(--t-sm); }
 .sources dt { color: var(--ink-2); }
@@ -127,8 +137,10 @@ h1 em { font-style: italic; }
 .hero-hub { fill: var(--ink); stroke: var(--surface); stroke-width: 4; }
 /* The diagram scales with its column, so its text is sized in diagram units (about 0.7× on screen). */
 .hero-label { fill: var(--ink); font: 600 var(--t-lg) var(--font-text); }
-.hero-label.is-hub { font: 500 var(--t-xl) var(--font-display); }
-.hero-label.is-line { fill: var(--ink-2); font-size: var(--t-md); font-weight: 500; }
+.hero-label.is-hub { font: 700 var(--t-xl) var(--font-display); font-stretch: var(--stretch-display); }
+.hero-rail { fill: none; stroke: var(--rail-color); stroke-width: 5; stroke-linecap: round; }
+.hero-bullet rect { fill: var(--rail-color); }
+.hero-bullet text { fill: var(--on-ink); font: 700 var(--t-lg) var(--font-text); text-anchor: middle; }
 .hero-chip rect { fill: var(--route-line); }
 .hero-chip text { fill: var(--on-ink); font: 800 var(--t-xl) var(--font-sign); text-anchor: middle; }
 
@@ -156,10 +168,10 @@ h1 em { font-style: italic; }
 .answer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--s-4) var(--s-6); margin: var(--s-6) 0; padding: var(--s-5) var(--s-6); border-radius: var(--r-lg); background: var(--board); color: var(--on-ink); box-shadow: var(--shadow); }
 .answer .chip { min-width: 60px; height: 52px; font-size: var(--t-2xl); }
 .answer-context { display: block; color: var(--amber); font: 500 var(--t-sm) var(--font-data); letter-spacing: 0.02em; }
-.answer-verdict { margin-top: var(--s-1); font: 500 var(--t-2xl)/1.1 var(--font-display); letter-spacing: var(--tracking-display); }
+.answer-verdict { margin-top: var(--s-1); font: 700 var(--t-2xl)/1.1 var(--font-display); font-stretch: var(--stretch-display); letter-spacing: var(--tracking-display); }
 .answer-verdict small { display: block; max-width: var(--measure); margin-top: var(--s-2); color: var(--on-board-2); font: 400 var(--t-md)/1.45 var(--font-text); letter-spacing: 0; }
 .answer-side { padding-left: var(--s-6); border-left: var(--hair) solid var(--board-rule); text-align: right; }
-.answer-value { display: block; color: var(--amber); font: 500 var(--t-board)/1 var(--font-display); letter-spacing: var(--tracking-display); }
+.answer-value { display: block; color: var(--amber); font: 900 var(--t-board)/1 var(--font-led); font-variation-settings: "ROND" 100; text-shadow: 0 0 14px rgb(247 181 59 / 0.35); }
 .answer-side a { color: var(--on-board-2); font-size: var(--t-sm); }
 .answer-side a:hover { color: var(--on-ink); }
 .answer.is-quiet { grid-template-columns: auto minmax(0, 1fr); background: var(--surface); color: var(--ink); border: var(--hair) solid var(--rule); box-shadow: none; }
@@ -170,8 +182,9 @@ h1 em { font-style: italic; }
 .work-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: var(--s-5); align-items: start; }
 .panel { min-width: 0; padding: var(--s-6); border: var(--hair) solid var(--rule); border-radius: var(--r-lg); background: var(--surface); }
 .candidates-panel, .map-panel { margin-top: var(--s-5); }
-.section-topline { display: flex; align-items: baseline; gap: var(--s-2); color: var(--ink-2); font-size: var(--t-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
-.step { color: var(--accent); font: italic 400 var(--t-xl)/1 var(--font-display); letter-spacing: 0; text-transform: none; }
+.section-topline { display: flex; align-items: center; gap: var(--s-2); color: var(--ink-2); font-size: var(--t-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+/* Step numbers are wayfinding tiles: a white figure on a dark square. */
+.step { display: inline-grid; place-items: center; align-self: center; width: 26px; height: 26px; border-radius: var(--r-sm); background: var(--ink); color: var(--on-ink); font: 700 var(--t-md)/1 var(--font-text); letter-spacing: 0; text-transform: none; }
 .section-heading, .candidates-heading { display: flex; justify-content: space-between; align-items: start; gap: var(--s-4); margin: var(--s-2) 0 var(--s-5); }
 .candidates-heading { margin-top: 0; }
 .candidates-heading h2 { margin-top: var(--s-2); }
@@ -276,7 +289,7 @@ h2 { font-size: var(--t-2xl); }
 .gap-summary { display: flex; align-items: end; justify-content: space-between; gap: var(--s-4); padding-top: var(--s-4); border-top: var(--hair) solid var(--rule); }
 .gap-label { display: block; margin-bottom: var(--s-1); color: var(--ink-2); font-size: var(--t-sm); }
 .gap-summary strong { font: 500 var(--t-lg) var(--font-data); }
-.gap-number { font: 400 var(--t-3xl)/0.9 var(--font-display); white-space: nowrap; }
+.gap-number { font: 700 var(--t-3xl)/0.9 var(--font-display); font-stretch: var(--stretch-display); white-space: nowrap; }
 .gap-number small { margin-left: var(--s-1); color: var(--ink-2); font: 400 var(--t-md) var(--font-text); }
 
 /* ── Step 3: options, buses to redirect, line counts ──────────────────────────────────── */
@@ -287,12 +300,12 @@ h2 { font-size: var(--t-2xl); }
 .compare-card.is-best { border-color: var(--ink); background: var(--surface); box-shadow: var(--shadow); }
 .compare-kicker { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); min-height: var(--s-5); font-size: var(--t-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
 .compare-badge { padding: var(--s-0) var(--s-2); border-radius: var(--r-pill); background: var(--board); color: var(--amber); font-size: var(--t-xs); font-weight: 600; letter-spacing: 0.02em; text-transform: none; }
-.compare-value { display: block; margin-top: var(--s-2); font: 500 var(--t-figure)/1 var(--font-display); letter-spacing: var(--tracking-display); }
+.compare-value { display: block; margin-top: var(--s-2); font: 700 var(--t-figure)/1 var(--font-display); font-stretch: var(--stretch-display); letter-spacing: var(--tracking-display); }
 .compare-value.is-positive { color: var(--accent); }
 .compare-value.is-negative { color: var(--loss); }
 .compare-card small { display: block; margin-top: var(--s-1); color: var(--ink-2); font-size: var(--t-xs); }
 .compare-card p { margin-top: var(--s-3); color: var(--ink-2); font-size: var(--t-sm); }
-.compare-verdict { margin-top: var(--s-4); font: italic 400 var(--t-xl)/1.3 var(--font-display); }
+.compare-verdict { max-width: 58ch; margin-top: var(--s-4); font: 600 var(--t-xl)/1.3 var(--font-display); font-stretch: var(--stretch-display); }
 /* Mini timeline inside each option: where the extra or borrowed bus lands in the gap. */
 .compare-timeline { display: block; width: 100%; height: auto; margin-top: var(--s-3); overflow: visible; }
 .tl-axis { stroke: var(--rule-strong); stroke-width: 1.5; }
@@ -339,7 +352,7 @@ h2 { font-size: var(--t-2xl); }
 .queue-inputs input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 .queue-source { display: block; margin-top: var(--s-2); color: var(--ink-2); font-size: var(--t-xs); }
 .queue-result { margin-top: var(--s-4); padding: var(--s-3) var(--s-4); border-radius: var(--r-sm); background: var(--surface); box-shadow: inset var(--thick) 0 0 var(--rule-strong); }
-.queue-result strong { display: block; font: 500 var(--t-xl) var(--font-display); }
+.queue-result strong { display: block; font: 700 var(--t-xl) var(--font-display); font-stretch: var(--stretch-display); }
 .queue-result strong.is-positive { color: var(--accent); }
 .queue-result strong.is-negative { color: var(--loss); }
 .queue-result p { margin-top: var(--s-1); color: var(--ink-2); font-size: var(--t-sm); }
@@ -381,7 +394,7 @@ h2 { font-size: var(--t-2xl); }
 .map-station.is-minor text { fill: var(--ink-2); font-weight: 500; font-size: var(--t-xs); }
 .map-ubc circle { fill: var(--ink); stroke: var(--surface); stroke-width: 3; }
 .map-ubc .map-ubc-core { fill: var(--surface); stroke: none; }
-.map-ubc text { fill: var(--ink); font: 500 var(--t-lg) var(--font-display); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; stroke-linejoin: round; }
+.map-ubc text { fill: var(--ink); font: 700 var(--t-lg) var(--font-display); font-stretch: var(--stretch-display); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; stroke-linejoin: round; }
 .map-scale path { fill: none; stroke: var(--ink-2); stroke-width: 2; }
 .map-scale text, .map-north text { fill: var(--ink-2); font: 400 var(--t-xs) var(--font-data); }
 .map-north path { fill: var(--ink-2); }
@@ -407,7 +420,7 @@ h2 { font-size: var(--t-2xl); }
 .reroute-facts div + div { padding-top: var(--s-3); border-top: var(--hair) solid var(--rule); }
 .reroute-facts dt { margin-bottom: var(--s-1); color: var(--ink-2); font-size: var(--t-sm); }
 .reroute-facts dd { margin: 0; color: var(--ink-2); font-size: var(--t-sm); }
-.reroute-facts dd strong { color: var(--ink); font: 500 var(--t-xl) var(--font-display); }
+.reroute-facts dd strong { color: var(--ink); font: 700 var(--t-xl) var(--font-display); font-stretch: var(--stretch-display); }
 .reroute-facts dd small { display: block; margin-top: var(--s-1); font-size: var(--t-xs); }
 .reroute-facts dd small.inline { display: inline; }
 .reroute-bar { display: block; height: 6px; margin-top: var(--s-2); border-radius: var(--r-pill); background: var(--tint); overflow: hidden; }
