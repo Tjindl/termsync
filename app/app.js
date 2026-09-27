@@ -1,8 +1,8 @@
 const state = {
   data: null,
-  route: "99",
+  route: "33",
   block: 15,
-  hour: 17 * 60,
+  hour: 15 * 60,
   tripId: null,
   candidateId: null,
   swap: null,
@@ -117,18 +117,13 @@ function selectDefaultTrip(routeId, code) {
   const possible = bestCandidateGap(routeId, code);
   if (possible) return possible;
   const period = block(code);
-  const preferredHour = code === 15 ? 17 * 60 : Math.floor((period.start + period.end) / 120) * 60;
   const trips = departures(routeId);
-  let pool = trips.map((trip, index) => ({ trip, index }))
-    .filter(({ trip, index }) => index < trips.length - 1 && trip.minute >= preferredHour && trip.minute < preferredHour + 60
-      && trips[index + 1].minute - trip.minute <= MAX_FILLABLE_GAP);
-  if (!pool.length) {
-    pool = trips.map((trip, index) => ({ trip, index }))
-      .filter(({ trip, index }) => index < trips.length - 1 && trip.minute >= period.start && trip.minute < period.end
-        && trips[index + 1].minute - trip.minute <= MAX_FILLABLE_GAP);
-  }
-  if (!pool.length) return { tripId: null, hour: preferredHour };
-  pool.sort((a, b) => (trips[b.index + 1].minute - b.trip.minute) - (trips[a.index + 1].minute - a.trip.minute));
+  const pool = trips.map((trip, index) => ({ trip, index }))
+    .filter(({ trip, index }) => index < trips.length - 1 && trip.minute >= period.start && trip.minute < period.end
+      && trips[index + 1].minute <= period.end && trips[index + 1].minute - trip.minute <= MAX_FILLABLE_GAP);
+  if (!pool.length) return { tripId: null, hour: period.start };
+  pool.sort((a, b) => (trips[b.index + 1].minute - b.trip.minute) - (trips[a.index + 1].minute - a.trip.minute)
+    || a.trip.minute - b.trip.minute);
   return { tripId: pool[0].trip.tripId, hour: Math.floor(pool[0].trip.minute / 60) * 60 };
 }
 
@@ -237,14 +232,53 @@ function renderSchedule() {
     : `<div><span class="gap-label">Select a departure</span><strong>See its next scheduled bus</strong></div>`;
 }
 
+function extraTripPlan(gap) {
+  const historical = measure();
+  if (!gap || route().serviceType !== "regular" || !historical || historical.loadPercent < 84) return null;
+  const before = gap.next.minute - gap.first.minute;
+  if (before < 6 || before > MAX_FILLABLE_GAP) return null;
+  const minute = gap.first.minute + Math.floor(before / 2);
+  const period = block();
+  if (minute < period.start || minute >= period.end || gap.next.minute > period.end) return null;
+  return {
+    minute, before,
+    firstHalf: minute - gap.first.minute,
+    secondHalf: gap.next.minute - minute,
+    after: Math.max(minute - gap.first.minute, gap.next.minute - minute),
+    departuresInBlock: departures().filter((trip) => trip.minute >= period.start && trip.minute < period.end).length,
+  };
+}
+
+function extraTripMarkup(gap, plan) {
+  if (!plan) return "";
+  const mapped = state.map?.trips[gap.first.tripId];
+  const shape = mapped ? state.map.shapes[mapped[0]] : null;
+  const destination = shape ? ` to ${escapeHtml(shape.end.name)}` : " along the same route";
+  const run = mapped ? `; a nearby published trip is scheduled for about ${mapped[1]} minutes` : "";
+  const existingChange = state.route === "33" ? `<p class="extra-context">TransLink already increased weekday afternoon 33 service in September 2026. Check current loads before requesting another increase. <a href="https://www.translink.ca/holidayservice" target="_blank" rel="noopener noreferrer">Service change ↗</a></p>` : "";
+  return `<section class="extra-plan" aria-label="Additional service scenario">
+    <span class="extra-kicker">ADDITIONAL SERVICE · PLANNING TEST</span>
+    <h3>Add one ${escapeHtml(state.route)} departure at ${timeLabel(plan.minute)}</h3>
+    <p>Start at ${escapeHtml(gap.first.bay)}${destination}${run}. This is a new trip, so it needs a vehicle and operator; the timetable does not identify either as available.</p>
+    <div class="extra-sequence" aria-label="Existing departures and proposed new departure">
+      <span>${timeLabel(gap.first.minute)}<small>scheduled</small></span>
+      <span class="is-added">${timeLabel(plan.minute)}<small>proposed · ${plan.firstHalf} min after</small></span>
+      <span>${timeLabel(gap.next.minute)}<small>scheduled · ${plan.secondHalf} min later</small></span>
+    </div>
+    <div class="extra-metrics"><span>Selected gap <strong>${plan.before} → ${plan.after} min max</strong></span><span>Departures in ${escapeHtml(block().label)} <strong>${plan.departuresInBlock} → ${plan.departuresInBlock + 1}</strong></span></div>
+    <p class="extra-caveat">The historical load is a 2025 route average, not a count on either scheduled bus. Confirm current per-trip loads or pass-ups, the bus and driver, bay capacity, and the return/next duty before treating this as an operational plan.</p>
+    ${existingChange}
+  </section>`;
+}
+
 function renderCandidates() {
   const gap = selectedGap();
   const special = route().serviceType !== "regular";
-  $("candidates-step").textContent = special ? "ROUTE CONTEXT" : "TEST A NEARBY TRIP";
-  $("candidates-title").textContent = special ? "How can we use this route?" : "Could a nearby bus fill that gap?";
+  $("candidates-step").textContent = special ? "ROUTE CONTEXT" : "TEST A SERVICE CHANGE";
+  $("candidates-title").textContent = special ? "How can we use this route?" : "How could we fill that gap?";
   $("candidates-description").textContent = special
     ? "Its published timetable and path are available. Bus-swap suggestions are limited to comparable city routes with historical load data."
-    : "Same terminal · within 250 m · scheduled inside the selected gap · historically below 60% load. Check the map for route fit.";
+    : "Check nearby lower-load trips, or test an added departure on the same route. A swap must start within 250 m and pass the route-fit screen.";
   if (special) {
     state.candidateId = null;
     state.swap = null;
@@ -258,7 +292,8 @@ function renderCandidates() {
     return;
   }
   const candidates = candidatesForGap(gap);
-  $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "OPTION" : "OPTIONS"}`;
+  const extra = extraTripPlan(gap);
+  $("candidate-count").textContent = `${candidates.length} ${candidates.length === 1 ? "SWAP" : "SWAPS"}${extra ? " · 1 ADD-TRIP PLAN" : ""}`;
   if (!candidates.length) {
     state.candidateId = null;
     state.swap = null;
@@ -266,13 +301,13 @@ function renderCandidates() {
     const serviceBreak = gap && gap.next.minute - gap.first.minute > MAX_FILLABLE_GAP;
     const explanation = !gap ? "Choose a scheduled departure above to inspect its following gap."
       : serviceBreak ? "This is a scheduled service break, not a continuous-service gap. It is excluded from bus-swap suggestions."
-        : lowerLoadRoutes === 0 ? "Every other route with a comparable historical load at UBC Exchange is at or above the 60% cutoff in this block. Moving service would be hard to justify from these data."
+        : lowerLoadRoutes === 0 ? "Every other eligible route has a 2025 average peak load factor at or above 60% in this block. Moving service would be hard to justify from these data."
         : "Lower-load routes exist, but no scheduled trip from a bay within 250 m falls inside this exact gap. Try another departure.";
     const another = bestCandidateGap(state.route, state.block);
     const later = state.block !== 18 && measure(state.route, 18) ? bestCandidateGap(state.route, 18) : null;
-    const action = another ? `<button class="try-button" type="button" id="try-option">Find a possible swap →</button>`
+    const action = extra ? "" : another ? `<button class="try-button" type="button" id="try-option">Find a possible swap →</button>`
       : later ? `<button class="try-button" type="button" id="try-later">Try 18–21 →</button>` : "";
-    $("candidates-content").innerHTML = `<div class="no-candidates"><span class="no-candidates-icon" aria-hidden="true">∅</span><div><strong>${serviceBreak ? "Scheduled service break" : "No suitable nearby trip for this gap"}</strong><p>${explanation}</p></div>${action}</div>`;
+    $("candidates-content").innerHTML = `<div class="no-candidates"><span class="no-candidates-icon" aria-hidden="true">∅</span><div><strong>${serviceBreak ? "Scheduled service break" : "No suitable nearby trip for this gap"}</strong><p>${explanation}</p></div>${action}</div>${extraTripMarkup(gap, extra)}`;
     $("try-option")?.addEventListener("click", () => { state.hour = another.hour; state.tripId = another.tripId; render(); });
     $("try-later")?.addEventListener("click", () => selectBlock(18));
     renderMap();
@@ -301,7 +336,7 @@ function renderCandidates() {
     <div><span class="metric-label">TARGET GAP IF MOVED</span><strong>${selected.targetBefore} → <span>${selected.targetAfter} min</span></strong></div>
     <div class="penalty"><span class="metric-label">DONOR GAP IF REMOVED</span><strong>${selected.donorBefore} → <span>${selected.donorAfter} min</span></strong></div>
     <p><span class="swap-verdict ${corridorFit && scheduleFit && pressureFit ? "is-favorable" : ""}">${verdict}</span><br />${explanation} This is a timetable scenario, not an available bus. Check actual loads, vehicle type, driver block and recovery time.</p>
-  </div>`;
+  </div>${extraTripMarkup(gap, extra)}`;
   $("candidates-content").querySelectorAll("[data-candidate]").forEach((button) => button.addEventListener("click", () => { state.candidateId = button.dataset.candidate; renderCandidates(); }));
   renderMap();
 }
@@ -452,11 +487,13 @@ function bayInset(gap, swap) {
 function renderRerouteSummary(gap, swap, reroute) {
   const map = state.map;
   if (!reroute) {
+    const extra = extraTripPlan(gap);
     const selectedTrip = gap ? map.trips[gap.first.tripId] : null;
     const shape = map.shapes[selectedTrip ? selectedTrip[0] : map.mainShape[state.route]];
     const run = selectedTrip ? selectedTrip[1] : typicalRun(state.route);
     const reason = route().serviceType === "nightbus" ? "N17 is shown for schedule and path context. No load-based swap is proposed."
       : route().serviceType === "campus_shuttle" ? "Route 68 is a campus shuttle, so it is not treated as a substitute for a city route."
+        : extra ? `An additional ${state.route} departure at ${timeLabel(extra.minute)} would follow the highlighted path. A vehicle and driver still need to be assigned.`
         : !gap ? "Pick a scheduled departure in step 02."
           : "No nearby bus qualifies for this selected gap. Try another departure to screen a possible reassignment.";
     $("reroute").innerHTML = `<div class="reroute-card is-wide"><span class="reroute-eyebrow">SELECTED ROUTE</span>
@@ -496,6 +533,7 @@ function renderMap() {
   const gap = selectedGap();
   const swap = state.swap;
   const reroute = swap ? rerouteFor(gap, swap) : null;
+  const extra = reroute ? null : extraTripPlan(gap);
   const covered = gap && map.trips[gap.first.tripId] ? map.shapes[map.trips[gap.first.tripId][0]] : null;
   const shapeFor = (id) => (id === state.route && covered ? covered : map.shapes[map.mainShape[id]]);
   const frame = frameFor([shapeFor(state.route), ...(reroute ? [reroute.own] : [])]);
@@ -551,6 +589,7 @@ function renderMap() {
   const bar = 2 * p.pxPerKm;
   const label = reroute
     ? `Map: the ${swap.donorId} bus from ${swap.trip.bay} would run route ${state.route} to ${reroute.path.end.name} instead of its usual trip to ${reroute.own.end.name}; ${reroute.offKm.toFixed(1)} km off its usual path, ending ${reroute.endGapKm.toFixed(1)} km from its usual end.`
+    : extra ? `Map: an added route ${state.route} trip at ${timeLabel(extra.minute)} would follow the highlighted route from UBC Exchange to ${shapeFor(state.route).end.name}. No vehicle has been identified.`
     : `Map of routes ${map.targetRoutes.join(", ")} leaving UBC Exchange: ${map.targetRoutes.map((id) => `${id} to ${shapeFor(id).end.name}`).join("; ")}.`;
   $("route-map").innerHTML = `<svg id="map-svg" viewBox="0 0 ${MAP.width} ${frame.height}" role="img" aria-label="${escapeHtml(label)}">
     <path class="map-network" d="${network}" />${rail}${routes}${overlay}${stations}
@@ -561,11 +600,13 @@ function renderMap() {
   </svg>`;
   $("map-legend-routes").innerHTML = map.targetRoutes.map((id) => `<span><i class="key-line" style="background:${routeColor(id)}"></i>${escapeHtml(id)}</span>`).join("");
   renderRerouteSummary(gap, swap, reroute);
+  $("map-panel").classList.toggle("has-swap", Boolean(reroute));
   const special = route().serviceType !== "regular";
-  $("map-step").textContent = special ? "SEE THE ROUTE" : "SEE THE REROUTE";
-  $("map-title").textContent = special ? `Where does the ${state.route} go?` : "Where would the nearby bus go?";
+  $("map-step").textContent = special ? "SEE THE ROUTE" : extra ? "SEE THE ADDED TRIP" : "SEE THE REROUTE";
+  $("map-title").textContent = special ? `Where does the ${state.route} go?` : extra ? `Where would the extra ${state.route} go?` : "Where would the nearby bus go?";
   $("map-subtitle").textContent = reroute
     ? `The orange bus normally runs the ${swap.donorId} (dashed orange). To cover the ${state.route} gap at ${timeLabel(swap.trip.minute)}, it would follow the ${state.route} line instead.`
+    : extra ? `A proposed ${state.route} departure at ${timeLabel(extra.minute)} would follow the highlighted path. This view does not identify an available bus or driver.`
     : special ? `Published route geometry for ${state.route} from UBC Exchange. No reassignment scenario is shown for this service.`
       : `Select one of the ${map.targetRoutes.length} routes to inspect its path. When step 03 finds a nearby trip, the map shows how far that bus would leave its usual route.`;
 }
