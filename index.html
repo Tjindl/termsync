@@ -9,7 +9,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="app/styles.css" />
-    <script src="app/switching.js" defer></script>
     <script src="app/app.js" defer></script>
   </head>
   <body>
@@ -24,17 +23,17 @@
           <div>
             <p class="eyebrow">A simpler way to test a bus change</p>
             <h1 id="page-title">Where should the next <em>bus</em> go?</h1>
-            <p class="intro-copy">Pick a route to see its schedule and historical loads. Find which bus could practically fill a gap, and who gains or pays for it, or test an added trip.</p>
+            <p class="intro-copy">Compare lines at nearby UBC bays. Enter counts to see whose wait shrinks, whose wait grows, and whether a bus can fit its next scheduled trip.</p>
           </div>
           <div class="snapshot-card" aria-label="Data periods">
             <div class="snapshot-line"><span class="snapshot-dot history"></span><span>LOADS</span><strong>Fall 2025 weekdays</strong></div>
             <div class="snapshot-line"><span class="snapshot-dot schedule"></span><span>TIMES</span><strong>Mon 28 Sep 2026</strong></div>
-            <p>Planning comparison across two years</p>
+            <p>Line counts are examples or manual inputs, never live observations.</p>
           </div>
         </section>
 
         <nav class="route-nav" id="route-nav" aria-label="Choose a bus route"></nav>
-        <p class="route-nav-note">The three crowded corridors we optimise. Buses from the other nine UBC Exchange routes are checked as replacements.</p>
+        <p class="route-nav-note">All 12 routes departing UBC Exchange in this sample timetable are shown. Route 68 is a campus shuttle; N17 has timetable and map data only.</p>
 
         <div id="app-error" class="app-error" role="alert" hidden></div>
         <div id="app-content" hidden>
@@ -65,9 +64,9 @@
           <section class="panel candidates-panel" aria-labelledby="candidates-title">
             <div class="candidates-heading">
               <div>
-                <div class="section-topline"><span class="step">03</span><span id="candidates-step">FILL THE GAP</span></div>
-                <h2 id="candidates-title">How could we fill that gap?</h2>
-                <p id="candidates-description">First, a bus from another route: finishing buses, then other routes' trips, checked for timing, bay, vehicle, both routes' loads and getting back to its own schedule. On crowded blocks, also an added trip on the same route.</p>
+                <div class="section-topline"><span class="step">03</span><span id="candidates-step">PRIORITIZE A BAY</span></div>
+                <h2 id="candidates-title">Which line should get the bus?</h2>
+                <p id="candidates-description">Enter observed line counts and compare the wait gained at one bay with the wait imposed at another.</p>
               </div>
               <span class="candidate-count" id="candidate-count"></span>
             </div>
@@ -91,7 +90,6 @@
               <div id="map-legend-routes" class="map-legend-routes"></div>
               <span class="donor-only"><i class="key-line is-donor"></i>Nearby bus: its usual route</span>
               <span class="donor-only"><i class="key-dot"></i>Nearby bus: rerouted trip</span>
-              <span class="donor-only"><i class="key-line is-empty"></i>Its empty run back</span>
               <span><i class="key-line is-rail"></i>SkyTrain</span>
               <span><i class="key-line is-network"></i>Other bus routes</span>
             </div>
@@ -100,7 +98,7 @@
       </main>
 
       <footer class="footer">
-        <div class="footer-main"><strong>Decision aid, not dispatch advice.</strong> Where shown, the load signal is a 2025 route-and-time-block average, shared by every bus time in that block. A specific bus may be full or empty. Any service change needs vehicle, driver, route, and passenger checks.</div>
+        <div class="footer-main"><strong>Decision aid, not dispatch advice.</strong> Queue counts are entered by a person or loaded as clearly marked examples. The app does not observe live lines. Historical loads describe the busiest point along a route, not UBC bays. Any service change needs downstream demand, vehicle capacity, driver, bay, and recovery checks.</div>
         <div class="footer-sources"><a href="https://www.translink.ca/tspr" target="_blank" rel="noopener noreferrer">2025 TransLink TSPR ↗</a><a href="https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-data" target="_blank" rel="noopener noreferrer">TransLink GTFS ↗</a></div>
         <small>Route and arrival data used in this product or service is provided by permission of TransLink. TransLink assumes no responsibility for the accuracy or currency of the Data used in this product or service.</small>
       </footer>
