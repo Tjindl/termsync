@@ -186,13 +186,41 @@ function routeDetail(info) {
       : `Busiest block ${peak}% load`;
 }
 
+/** A small line of simulated students leaving UBC through the day, against scheduled capacity. */
+function routeSparkline(id) {
+  const demand = hourlyDemand(id), capacity = hourlyCapacity(id);
+  if (!demand || !capacity) return null;
+  const hours = demand.map((value, hour) => (value != null ? hour : null)).filter((hour) => hour !== null);
+  const width = 240, height = 44, first = hours[0], last = hours[hours.length - 1];
+  const top = Math.max(1, ...hours.map((hour) => Math.max(demand[hour], capacity[hour] || 0)));
+  const x = (hour) => (hour - first) / (last - first) * width;
+  const y = (value) => height - 2 - value / top * (height - 6);
+  const path = (values) => hours.map((hour, i) => `${i ? "L" : "M"}${x(hour).toFixed(1)} ${y(values[hour] || 0).toFixed(1)}`).join("");
+  const load = (hour) => (capacity[hour] ? demand[hour] / capacity[hour] : 0);
+  const peak = hours.reduce((best, hour) => (load(hour) > load(best) ? hour : best), first);
+  const line = path(demand);
+  return {
+    peak, load: Math.round(load(peak) * 100),
+    svg: `<svg class="route-spark" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+      <path class="spark-area" d="${line}L${width} ${height}L0 ${height}Z" /><path class="spark-capacity" d="${path(capacity)}" vector-effect="non-scaling-stroke" />
+      <path class="spark-line" d="${line}" vector-effect="non-scaling-stroke" />
+      <line class="spark-capacity" x1="${x(peak).toFixed(1)}" x2="${x(peak).toFixed(1)}" y1="0" y2="${height}" vector-effect="non-scaling-stroke" /></svg>`,
+  };
+}
+
 function renderRoutes() {
   const ids = state.data.targetRoutes;
   const focus = FOCUS_ROUTES.filter((id) => ids.includes(id));
   const others = ids.filter((id) => !focus.includes(id));
-  $("route-nav").innerHTML = `<div class="route-focus">${focus.map((id) => `<button class="route-button" type="button" data-route="${escapeHtml(id)}" aria-pressed="${id === state.route}" style="--route-color:${routeColor(id)}">
+  const destination = (id) => state.map?.shapes[state.map.mainShape[id]]?.end.name.replace(" Station", "");
+  $("route-nav").innerHTML = `<div class="route-focus">${focus.map((id) => {
+    const spark = routeSparkline(id);
+    return `<button class="route-button" type="button" data-route="${escapeHtml(id)}" aria-pressed="${id === state.route}" style="--route-color:${routeColor(id)}">
       <span class="route-number">${escapeHtml(id)}</span>
-      <span class="route-info"><strong>${escapeHtml(route(id).name)}</strong><small>${routeDetail(route(id))}</small></span></button>`).join("")}</div>
+      <span class="route-info"><strong>${escapeHtml(route(id).name)}</strong><small>${destination(id) ? `UBC → ${escapeHtml(destination(id))}` : routeDetail(route(id))}</small></span>
+      ${spark ? `${spark.svg}<span class="route-peak"><span>Fullest hour <b>${String(spark.peak).padStart(2, "0")}:00</b></span><span><b>${spark.load}%</b> of capacity · ${escapeHtml(weekdayLabel())}</span></span>` : ""}
+    </button>`;
+  }).join("")}</div>
     <div class="route-others" role="group" aria-label="Other routes from UBC Exchange"><span>Other routes from UBC Exchange</span>${others.map((id) => `<button class="route-sign" type="button" data-route="${escapeHtml(id)}" aria-pressed="${id === state.route}"
       style="--route-color:${routeColor(id)}" title="${escapeHtml(route(id).name)}" aria-label="Route ${escapeHtml(id)}, ${escapeHtml(route(id).name)}: ${routeDetail(route(id))}">${escapeHtml(id)}</button>`).join("")}</div>`;
   $("route-nav").querySelectorAll("[data-route]").forEach((button) => button.addEventListener("click", () => selectRoute(button.dataset.route)));
@@ -311,7 +339,8 @@ function renderHourlyChart() {
       <div class="weekday-tabs" role="group" aria-label="Weekday">${WEEKDAY_CHOICES.map(([day, text]) => `<button type="button" class="weekday-tab" data-weekday="${day}" aria-pressed="${day === state.weekday}">${text}</button>`).join("")}</div>
       <div class="hour-plot">
         <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Students leaving UBC on route ${escapeHtml(state.route)} each hour, ${escapeHtml(weekdayLabel())}">
-          ${band}${grid.join("")}<path class="hour-capacity" d="${path(info.capacity)}" /><path class="hour-line" d="${path(students)}" />${points}${ticks}
+          ${band}${grid.join("")}<path class="hour-area" d="${path(students)}L${x(last).toFixed(1)} ${y(0).toFixed(1)}L${x(first).toFixed(1)} ${y(0).toFixed(1)}Z" />
+          <path class="hour-capacity" d="${path(info.capacity)}" /><path class="hour-line" d="${path(students)}" />${points}${ticks}
         </svg>
         <div class="hour-tip" hidden></div>
       </div>
@@ -531,6 +560,39 @@ function verdictFor(result) {
 
 const signedMinutes = (value) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(Math.round(value)).toLocaleString("en-CA")}`;
 
+/**
+ * Where the buses sit in the gap for one option, on a shared minute scale. Red bars are the waits
+ * between buses; a hollow ring is an added trip; a dashed ring is a trip taken away.
+ */
+function optionTimeline(kind, result) {
+  const { gap, add, redirect } = result;
+  const c = kind === "redirect" && redirect ? redirect.candidate : null;
+  const lo = Math.min(gap.first.minute, c ? c.donorPreviousMinute : Infinity), hi = Math.max(gap.next.minute, c ? c.donorNextMinute : -Infinity);
+  const width = 320, left = 40, right = width - 18;
+  const x = (minute) => left + (minute - lo) / Math.max(1, hi - lo) * (right - left);
+  const lane = (y, id, buses, gone = null) => {
+    const times = [...buses.map((bus) => bus.minute), ...(gone === null ? [] : [gone])].sort((a, b) => a - b);
+    const stops = buses.map((bus) => bus.minute).sort((a, b) => a - b);
+    const waits = stops.slice(1).map((minute, i) => `<line class="tl-wait" x1="${x(stops[i]).toFixed(1)}" x2="${x(minute).toFixed(1)}" y1="${y}" y2="${y}" />`).join("");
+    let lastLabel = -Infinity;
+    const labels = times.map((minute) => {
+      if (x(minute) - lastLabel < 48) return "";  // a label is about 44 units wide
+      lastLabel = x(minute);
+      return `<text class="tl-label" x="${x(minute).toFixed(1)}" y="${y + 22}">${timeLabel(minute)}</text>`;
+    }).join("");
+    return `<text class="tl-name" x="0" y="${y}" dy="0.35em">${escapeHtml(id)}</text>
+      <line class="tl-axis" x1="${left}" x2="${right}" y1="${y}" y2="${y}" />${waits}
+      ${gone === null ? "" : `<circle class="tl-gone" cx="${x(gone).toFixed(1)}" cy="${y}" r="6" />`}
+      ${buses.map((bus) => `<circle class="${bus.added ? "tl-new" : "tl-bus"}" cx="${x(bus.minute).toFixed(1)}" cy="${y}" r="6" style="--route-color:${routeColor(bus.route)}" />`).join("")}${labels}`;
+  };
+  const r = state.route, ends = [{ minute: gap.first.minute, route: r }, { minute: gap.next.minute, route: r }];
+  const target = kind === "add" ? [...ends, { minute: add.minute, route: r, added: true }]
+    : c ? [...ends, { minute: c.trip.minute, route: c.donorId }] : ends;
+  const donor = c ? lane(66, c.donorId, [{ minute: c.donorPreviousMinute, route: c.donorId }, { minute: c.donorNextMinute, route: c.donorId }], c.trip.minute) : "";
+  const height = c ? 96 : 48;
+  return `<svg class="compare-timeline" viewBox="0 0 ${width} ${height}" aria-hidden="true">${lane(14, r, target)}${donor}</svg>`;
+}
+
 function compareMarkup(result) {
   if (!result) return "";
   const { gap, add, redirect, best } = result;
@@ -539,6 +601,7 @@ function compareMarkup(result) {
   const card = (key, kicker, value, text) => `<div class="compare-card${best === key ? " is-best" : ""}">
       <span class="compare-kicker">${kicker}${best === key ? '<span class="compare-badge">Recommended</span>' : ""}</span>
       <strong class="compare-value ${tone(value)}">${value === null ? "—" : signedMinutes(value)}</strong><small>passenger-minutes at the bays</small>
+      ${key === "redirect" && !redirect ? "" : optionTimeline(key, result)}
       <p>${text}</p></div>`;
   const redirectText = redirect
     ? `Move the ${escapeHtml(redirect.candidate.donorId)} at ${timeLabel(redirect.candidate.trip.minute)}: ~${redirect.target} waiting for the ${escapeHtml(r)} leave ${redirect.saved} min sooner, but ~${redirect.donor} waiting for the ${escapeHtml(redirect.candidate.donorId)} wait ${redirect.lost} min longer. No extra bus needed.`

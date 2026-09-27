@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f3f1ea" />
+    <meta name="theme-color" content="#f4efe5" />
     <title>Termsync — UBC Bus Planner</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="app/styles.css" />
     <script src="app/app.js" defer></script>
   </head>
@@ -21,15 +21,26 @@
       <main>
         <section class="intro" aria-labelledby="page-title">
           <div>
-            <p class="eyebrow">The 99, R4 and 49 at UBC Exchange</p>
-            <h1 id="page-title">Where should the next bus go?</h1>
+            <p class="eyebrow">UBC Exchange · the 99, R4 and 49</p>
+            <h1 id="page-title">Where should the <em>next</em> bus go?</h1>
             <p class="intro-copy">Find the hour a route runs short, pick the gap between two departures, and see whether redirecting a nearby bus, adding a trip, or leaving it alone serves riders best.</p>
+            <dl class="sources" aria-label="Data used">
+              <dt>Loads</dt><dd>TransLink, fall 2025 weekdays</dd>
+              <dt>Timetable</dt><dd>Monday 28 September 2026</dd>
+              <dt>Demand</dt><dd>Simulated students, not live counts</dd>
+            </dl>
           </div>
-          <dl class="sources" aria-label="Data used">
-            <dt>Loads</dt><dd>TransLink, fall 2025 weekdays</dd>
-            <dt>Timetable</dt><dd>Monday 28 September 2026</dd>
-            <dt>Demand</dt><dd>Simulated students, not live counts</dd>
-          </dl>
+          <svg class="hero-diagram" viewBox="0 0 760 300" role="img" aria-label="Schematic: the 99, R4 and 49 leave UBC Exchange, cross the Canada Line at Broadway–City Hall, Oakridge–41st and Langara–49th, and end at Commercial–Broadway, Joyce–Collingwood and Metrotown on the Expo Line.">
+            <path class="map-rail" d="M410 26 L410 274" /><path class="map-rail" d="M560 26 L560 274" />
+            <text class="hero-label is-line" x="410" y="16" text-anchor="middle">Canada Line</text>
+            <text class="hero-label is-line" x="560" y="16" text-anchor="middle">Expo Line</text>
+            <path class="hero-line" style="--route-line:var(--route-99)" d="M150 150 L230 70 L560 70" /><path class="hero-line" style="--route-line:var(--route-R4)" d="M150 150 L560 150" /><path class="hero-line" style="--route-line:var(--route-49)" d="M150 150 L230 230 L560 230" />
+            <circle class="hero-stop" cx="410" cy="70" r="9" /><circle class="hero-stop is-terminus" cx="560" cy="70" r="11" /><circle class="hero-stop" cx="410" cy="150" r="9" /><circle class="hero-stop is-terminus" cx="560" cy="150" r="11" /><circle class="hero-stop" cx="410" cy="230" r="9" /><circle class="hero-stop is-terminus" cx="560" cy="230" r="11" />
+            <g class="hero-chip" style="--route-line:var(--route-99)" transform="translate(292 70)"><rect x="-24" y="-16" width="48" height="32" rx="4" /><text dy="0.36em">99</text></g><g class="hero-chip" style="--route-line:var(--route-R4)" transform="translate(292 150)"><rect x="-24" y="-16" width="48" height="32" rx="4" /><text dy="0.36em">R4</text></g><g class="hero-chip" style="--route-line:var(--route-49)" transform="translate(292 230)"><rect x="-24" y="-16" width="48" height="32" rx="4" /><text dy="0.36em">49</text></g>
+            <circle class="hero-hub" cx="150" cy="150" r="16" />
+            <text class="hero-label is-hub" x="124" y="150" dy="0.35em" text-anchor="end">UBC Exchange</text>
+            <text class="hero-label" x="582" y="70" dy="0.35em">Commercial–Broadway</text><text class="hero-label" x="582" y="150" dy="0.35em">Joyce–Collingwood</text><text class="hero-label" x="582" y="230" dy="0.35em">Metrotown</text>
+          </svg>
         </section>
 
         <nav class="route-nav" id="route-nav" aria-label="Choose a bus route"></nav>
