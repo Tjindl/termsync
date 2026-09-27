@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 SERVICE_DATE = dt.date(2026, 9, 28)  # Representative fall Monday in the bundled feed.
-TARGETS = ("99", "R4", "49")
+TARGETS = ("99", "R4", "49", "9", "44", "84")
 BLOCKS = ((4, 240, 360, "04–06"), (6, 360, 540, "06–09"),
           (9, 540, 900, "09–15"), (15, 900, 1080, "15–18"),
           (18, 1080, 1260, "18–21"), (21, 1260, 1440, "21–24"),

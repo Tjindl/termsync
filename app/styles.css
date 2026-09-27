@@ -13,6 +13,9 @@
   --route-99: #2f64d8;
   --route-R4: #1e8a4e;
   --route-49: #9c3bb0;
+  --route-9: #945c0c;
+  --route-44: #b23469;
+  --route-84: #007783;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --sans: "DM Sans", "Avenir Next", sans-serif;
 }
@@ -143,6 +146,7 @@ h2 { margin: 0; font-weight: 700; font-size: 22px; letter-spacing: -.045em; line
 .map-route:hover .map-line { stroke-width: 5.5; }
 .map-route.is-selected .map-line { stroke-width: 6.5; }
 .map-route.is-faded { opacity: .2; }
+.map-route:not(.is-selected):not(.is-faded) { opacity: .68; }
 .map-route.is-selected { cursor: default; }
 .map-chip rect { fill: var(--route-line, var(--ink)); stroke: var(--white); stroke-width: 2; }
 .map-chip text { fill: #fff; font: 600 13px var(--mono); text-anchor: middle; letter-spacing: -.04em; }
@@ -202,6 +206,7 @@ h2 { margin: 0; font-weight: 700; font-size: 22px; letter-spacing: -.045em; line
 .route-key li.is-selected { background: var(--teal-soft); }
 
 .map-legend { display: flex; flex-wrap: wrap; gap: 8px 22px; border-top: 1px solid var(--line); padding-top: 14px; margin-top: 16px; font: 500 10px var(--mono); color: var(--muted); }
+.map-legend-routes { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .map-legend span { display: inline-flex; align-items: center; gap: 8px; }
 .key-line { display: inline-block; width: 22px; height: 5px; border-radius: 2px; }
 .key-line.is-donor { height: 0; border-top: 4px dashed var(--orange); border-radius: 0; }

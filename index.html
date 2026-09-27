@@ -65,7 +65,7 @@
               <div>
                 <div class="section-topline"><span class="step">03</span><span>TEST A NEARBY TRIP</span></div>
                 <h2 id="candidates-title">Could a nearby bus fill that gap?</h2>
-                <p>Same terminal · within 250 m · scheduled inside the selected gap · historically below 60% load</p>
+                <p>Same terminal · within 250 m · scheduled inside the selected gap · historically below 60% load. Check the map for route fit.</p>
               </div>
               <span class="candidate-count" id="candidate-count"></span>
             </div>
@@ -86,9 +86,7 @@
               <aside id="reroute" class="reroute" aria-live="polite"></aside>
             </div>
             <div class="map-legend" aria-hidden="true">
-              <span><i class="key-line" style="background:var(--route-99)"></i>99</span>
-              <span><i class="key-line" style="background:var(--route-R4)"></i>R4</span>
-              <span><i class="key-line" style="background:var(--route-49)"></i>49</span>
+              <div id="map-legend-routes" class="map-legend-routes"></div>
               <span><i class="key-line is-donor"></i>Nearby bus: its usual route</span>
               <span><i class="key-dot"></i>Nearby bus: rerouted trip</span>
               <span><i class="key-line is-rail"></i>SkyTrain</span>

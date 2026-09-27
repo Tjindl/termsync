@@ -152,6 +152,9 @@ def main():
         x, y = float(stop["stop_lon"]), float(stop["stop_lat"])
         near = min(stations, key=lambda n: length_km([[x, y], list(stations[n])]))
         name = f"{near} Station" if length_km([[x, y], list(stations[near])]) < 0.45 else stop_label(stop["stop_name"])
+        headsign = Counter(trips[tid]["trip_headsign"] for tid, trip_shape in trip_shapes.items() if trip_shape == sid).most_common(1)[0][0]
+        if "Dundarave" in headsign:
+            name = "Dundarave"
         shapes_out.append({"route": route, "lengthKm": round(length_km(shape[sid]), 1),
                            "end": {"name": name, "lon": round(x, 5), "lat": round(y, 5)},
                            "coords": rounded(simplify(shape[sid], 0.00003), 5)})

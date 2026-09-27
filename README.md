@@ -1,6 +1,6 @@
 # Termsync
 
-A small UBC Exchange service-planning demo for routes **99, R4, and 49**.
+A small UBC Exchange service-planning demo for routes **99, R4, 49, 9, 44, and 84**.
 
 Run it locally from this folder:
 
