@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0057a0" />
+    <title>Termsync — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=Big+Shoulders+Display:wght@700;800&family=Doto:ROND,wght@0..100,900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="app/styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="shell masthead-inner">
+        <a class="brand" href="./" aria-label="Termsync home"><span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="bus-body" d="M7 2h10a3 3 0 0 1 3 3v12a2 2 0 0 1-1 1.73V21a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-2h-7v2a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-2.27A2 2 0 0 1 4 17V5a3 3 0 0 1 3-3z" /><rect class="bus-glass" x="6" y="5" width="12" height="7" rx="1" /><circle class="bus-glass" cx="8" cy="15.5" r="1.3" /><circle class="bus-glass" cx="16" cy="15.5" r="1.3" /></svg></span><span>termsync</span></a>
+        <nav class="site-nav" aria-label="Sections"><a href="./">Planner</a><a href="dashboard.html" aria-current="page">Dashboard</a><a href="eda.html">EDA</a></nav>
+      </div>
+    </header>
+    <div class="shell">
+      <main>
+        <section class="page-intro">
+          <div>
+            <p class="eyebrow">Databricks · findings</p>
+            <h1>Analysis dashboard</h1>
+            <p class="intro-copy">The data analysis behind the planner, built in Databricks. This is a snapshot; the live version needs a Databricks login.</p>
+          </div>
+          <a class="page-action" href="https://dbc-4404f2d7-4a11.cloud.databricks.com/dashboardsv3/01f1c0524e591b979dca574cf3cb1cce/published?o=7474654124962980" target="_blank" rel="noopener noreferrer">Open live dashboard ↗</a>
+        </section>
+        <div class="page-frame" id="dashboard-frame">
+          <div class="no-candidates"><div><strong>Dashboard snapshot not added yet</strong><p>In Databricks, open the dashboard, choose ⋮ → Download PDF, and save it as <code>analysis/dashboard.pdf</code>.</p></div></div>
+        </div>
+      </main>
+    </div>
+    <script>
+      // Show the exported PDF once it exists; until then the note above stays.
+      fetch("analysis/dashboard.pdf", { method: "HEAD" }).then((response) => {
+        if (!response.ok) return;
+        document.getElementById("dashboard-frame").innerHTML = '<iframe src="analysis/dashboard.pdf#navpanes=0&view=FitH" title="Analysis dashboard snapshot"></iframe>';
+      }).catch(() => {});
+    </script>
+  </body>
+</html>

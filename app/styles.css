@@ -16,6 +16,7 @@
   --loss: #a4302a;           /* losses and warnings only */
   --loss-tint: #f7e3e0;
   --on-ink: #ffffff;
+  --on-accent-tint: rgba(255, 255, 255, 0.18);  /* the current tab in the header band */
   --board: #0c1620;          /* the real-time sign */
   --board-rule: #243242;
   --on-board-2: #a7b4c2;     /* 8.6:1 on the board */
@@ -117,17 +118,25 @@ p { margin: 0; }
 .brand-mark svg { width: 22px; height: 22px; }
 .brand-mark .bus-body { fill: var(--accent); }
 .brand-mark .bus-glass { fill: var(--surface); }
-.masthead-meta { font-size: var(--t-sm); font-weight: 500; }
+.site-nav { display: flex; gap: var(--s-1); }
+.site-nav a { padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); color: var(--on-ink); font-size: var(--t-sm); font-weight: 600; text-decoration: none; }
+.site-nav a:hover, .site-nav a[aria-current="page"] { background: var(--on-accent-tint); }
+
+/* ── Dashboard and EDA pages: a heading over one embedded document ─────────────────────── */
+.page-intro { display: flex; align-items: end; justify-content: space-between; gap: var(--s-5); padding: var(--s-7) 0 var(--s-5); }
+.page-intro h1 { max-width: none; }
+.page-action { flex: none; padding: var(--s-2) var(--s-4); border-radius: var(--r-pill); background: var(--accent); color: var(--on-ink); font-size: var(--t-sm); font-weight: 600; text-decoration: none; }
+.page-action:hover { background: var(--ink); }
+.page-frame { margin-bottom: var(--s-7); border: var(--hair) solid var(--rule); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
+.page-frame iframe { display: block; width: 100%; height: calc(100vh - 140px); min-height: 520px; border: 0; }
+.page-frame .no-candidates { margin: var(--s-5); }
 .brand:focus-visible, .masthead a:focus-visible { outline-color: var(--on-ink); }
 
-.intro { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); align-items: center; gap: var(--s-6); padding: var(--s-7) 0 var(--s-6); }
+.intro { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr); align-items: center; gap: var(--s-6); padding: var(--s-7) 0 var(--s-6); }
 .eyebrow { margin-bottom: var(--s-3); color: var(--accent); font-size: var(--t-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
 h1 { font-size: var(--t-3xl); max-width: 13ch; }
 h1 em { font-style: normal; color: var(--accent); }
 .intro-copy { max-width: 52ch; margin-top: var(--s-4); color: var(--ink-2); font-size: var(--t-lg); line-height: 1.5; }
-.sources { display: grid; grid-template-columns: auto 1fr; gap: var(--s-1) var(--s-4); margin: var(--s-5) 0 0; padding-top: var(--s-3); border-top: var(--hair) solid var(--rule); font-size: var(--t-sm); }
-.sources dt { color: var(--ink-2); }
-.sources dd { margin: 0; }
 
 /* The three routes as a line diagram: UBC Exchange on the left, termini on the right. */
 .hero-diagram { display: block; width: 100%; height: auto; overflow: visible; }
@@ -305,7 +314,6 @@ h2 { font-size: var(--t-2xl); }
 .compare-value.is-negative { color: var(--loss); }
 .compare-card small { display: block; margin-top: var(--s-1); color: var(--ink-2); font-size: var(--t-xs); }
 .compare-card p { margin-top: var(--s-3); color: var(--ink-2); font-size: var(--t-sm); }
-.compare-verdict { max-width: 58ch; margin-top: var(--s-4); font: 600 var(--t-xl)/1.3 var(--font-display); font-stretch: var(--stretch-display); }
 /* Mini timeline inside each option: where the extra or borrowed bus lands in the gap. */
 .compare-timeline { display: block; width: 100%; height: auto; margin-top: var(--s-3); overflow: visible; }
 .tl-axis { stroke: var(--rule-strong); stroke-width: 1.5; }
@@ -316,11 +324,10 @@ h2 { font-size: var(--t-2xl); }
 .tl-label { fill: var(--ink-2); font: 400 var(--t-xs) var(--font-data); text-anchor: middle; }
 .tl-name { fill: var(--ink); font: 600 var(--t-xs) var(--font-text); }
 
-.queue-examples { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); margin-bottom: var(--s-4); }
+.queue-examples { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
 .queue-examples > span { color: var(--ink-2); font-size: var(--t-sm); }
 .queue-examples button { min-height: 32px; padding: 0 var(--s-4); border: var(--hair) solid var(--rule-strong); border-radius: var(--r-pill); background: var(--surface); font: 500 var(--t-sm) var(--font-data); }
 .queue-examples button:hover { background: var(--tint); }
-.queue-examples small { flex-basis: 100%; color: var(--ink-2); font-size: var(--t-xs); }
 
 .candidate-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); }
 .candidate { display: block; padding: var(--s-4); border: var(--hair) solid var(--rule); border-radius: var(--r-md); background: var(--surface); text-align: left; transition: border-color var(--ease), box-shadow var(--ease); }
@@ -330,8 +337,6 @@ h2 { font-size: var(--t-2xl); }
 .candidate-route { min-width: var(--chip); height: 36px; padding: 0 var(--s-2); font-size: var(--t-xl); }
 .candidate-name { display: block; font-size: var(--t-md); font-weight: 600; line-height: 1.25; }
 .candidate-time { display: block; margin-top: var(--s-0); color: var(--ink-2); font: 400 var(--t-xs) var(--font-data); }
-.candidate-divider { display: block; height: var(--hair); margin: var(--s-3) 0; background: var(--rule); }
-.candidate-facts { display: flex; justify-content: space-between; gap: var(--s-2); color: var(--ink-2); font-size: var(--t-xs); }
 .candidate-sim { display: block; margin-top: var(--s-2); color: var(--accent); font: 500 var(--t-xs) var(--font-data); }
 .candidate-sim.is-negative { color: var(--loss); }
 
@@ -341,7 +346,8 @@ h2 { font-size: var(--t-2xl); }
 
 .bus-pick { margin-bottom: var(--s-5); }
 .queue-workspace { margin-top: var(--s-5); padding: var(--s-5); border-radius: var(--r-md); background: var(--paper); }
-.queue-title { margin-bottom: var(--s-4); font-size: var(--t-xl); }
+.queue-title { cursor: pointer; font-size: var(--t-md); font-weight: 600; }
+.queue-workspace[open] .queue-title { margin-bottom: var(--s-4); }
 .queue-tradeoff { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-4); }
 .queue-tradeoff strong { display: block; margin-top: var(--s-1); font: 500 var(--t-lg) var(--font-data); }
 .queue-tradeoff > div:last-child strong { color: var(--loss); }
@@ -432,6 +438,8 @@ h2 { font-size: var(--t-2xl); }
 .map-legend-routes { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); }
 .map-legend span { display: inline-flex; align-items: center; gap: var(--s-2); }
 .map-legend .donor-only { display: none; }
+.legend-more summary { cursor: pointer; font-weight: 600; }
+.legend-more[open] { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); }
 .map-legend .legend-source { margin-left: auto; }
 .map-panel.has-swap .map-legend .donor-only { display: inline-flex; }
 .key-line { display: inline-block; width: 22px; height: 4px; border-radius: var(--r-pill); }
@@ -456,7 +464,7 @@ h2 { font-size: var(--t-2xl); }
 @media (max-width: 1050px) {
   .shell { padding: 0 var(--s-5); }
   .intro { grid-template-columns: 1fr; }
-  .hero-diagram { max-width: 560px; }
+  .hero-diagram { display: none; }  /* only shown beside the headline on wide screens */
   .work-grid { grid-template-columns: 1fr; }
   .reroute { grid-template-columns: 1fr 1fr; }
   .reroute-card.is-wide { grid-column: 1 / -1; }
@@ -466,8 +474,9 @@ h2 { font-size: var(--t-2xl); }
 @media (max-width: 700px) {
   :root { --t-3xl: 42px; --t-2xl: 28px; --t-xl: 21px; --t-figure: 38px; }
   .shell { padding: 0 var(--s-4); }
-  .masthead-meta { display: none; }
-  .hero-diagram { display: none; }  /* its labels would fall below 9px; the eyebrow names the routes */
+  .brand > span:last-child { display: none; }  /* the bus mark alone leaves room for the tabs */
+  .site-nav a { padding: var(--s-2); }
+  .page-intro { flex-direction: column; align-items: start; padding: var(--s-6) 0 var(--s-4); }
   .intro { padding: var(--s-6) 0 var(--s-5); }
   .intro-copy { font-size: var(--t-md); }
   .route-focus { grid-template-columns: 1fr; gap: var(--s-2); }
